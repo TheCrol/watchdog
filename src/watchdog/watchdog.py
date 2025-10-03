@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import contextlib
 import logging
+from typing import cast
 
 import aiorun
 import toml
@@ -173,7 +174,7 @@ class App:
             return False
 
         self.bot_token = bot_token
-        self.bot_admins = bot_admins
+        self.bot_admins = cast(list[int], bot_admins)
         self.imghash_bin = imghash_bin
 
         return True
