@@ -190,6 +190,9 @@ class Report:
 
             except Exception as e:
                 log.error(f"Failed to send admin report to {admin.name}: {e}")
+                await self.app.botadmin.notify(
+                    f"Failed to send admin report to {admin.name}: {e}"
+                )
 
         await update.message.reply_html(
             f"<i>Reported to {pluralize(count, 'admin', 'admins')}</i>"

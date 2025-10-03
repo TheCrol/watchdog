@@ -1,3 +1,4 @@
+import asyncio
 import itertools
 import logging
 from dataclasses import dataclass
@@ -72,6 +73,16 @@ class BotAdmin:
         )
 
         self.app_configs: list[AppConfig] = []
+
+    def notify_sync(self, text: str):
+        """Sync version of notify"""
+        asyncio.create_task(self.notify(text))
+
+    async def notify(self, text: str):
+        """Notify all bot admins with a message"""
+        message = f"❗ <b>Watchdog notification</b> ❗\n\n{text}"
+        for admin_id in self.app.bot_admins:
+            await self.bot.bot.send_message(admin_id, message, parse_mode="HTML")
 
     async def show_groups(self, message: Message | MaybeInaccessibleMessage):
         groups = self.app.db.groups

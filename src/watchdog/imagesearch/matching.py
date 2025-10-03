@@ -223,6 +223,9 @@ class Matching:
                         log.error(
                             f"Failed to fetch DB dump URL. Status code: {resp.status}"
                         )
+                        await self.app.botadmin.notify(
+                            f"In Matching: Failed to fetch DB dump URL. Status code: {resp.status}"
+                        )
                         return
 
                     url = await resp.text()
@@ -230,6 +233,9 @@ class Matching:
                     return url
         except Exception as e:
             log.error(f"Error fetching DB dump URL: {e}")
+            await self.app.botadmin.notify(
+                f"In Matching: Error fetching DB dump URL: {e}"
+            )
             return
 
     async def download_and_process_db_dump(self):
@@ -268,6 +274,9 @@ class Matching:
                         log.error(
                             f"Failed to download DB dump. Status code: {resp.status}"
                         )
+                        await self.app.botadmin.notify(
+                            f"In Matching: Failed to download DB dump. Status code: {resp.status}"
+                        )
                         return False
 
                     mode = "ab" if existing_size > 0 else "wb"
@@ -301,10 +310,16 @@ class Matching:
 
         except asyncio.TimeoutError:
             log.error("Timeout error while downloading DB dump")
+            await self.app.botadmin.notify(
+                "In Matching: Timeout error while downloading DB dump"
+            )
             return False
 
         except Exception as e:
             log.error(f"Error downloading DB dump: {e}")
+            await self.app.botadmin.notify(
+                f"In Matching: Error downloading DB dump: {e}"
+            )
             return False
 
     async def unpack_db_dump(self) -> bool:

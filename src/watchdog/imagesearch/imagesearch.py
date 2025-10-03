@@ -120,12 +120,19 @@ class ImageSearch:
                 return int(output)
             except ValueError:
                 log.error(f"Image search binary returned non-integer output: {output}")
+                await self.app.botadmin.notify(
+                    f"Image search binary returned non-integer output: {output}"
+                )
                 return None
         except FileNotFoundError:
             log.error(f"Image search binary not found at path: {self.app.imghash_bin}")
+            await self.app.botadmin.notify(
+                f"Image search binary not found at path: {self.app.imghash_bin}"
+            )
             return None
         except Exception as e:
             log.error(f"Error executing image search binary: {e}")
+            await self.app.botadmin.notify(f"Error executing image search binary: {e}")
             return None
 
     def add_group_register(self, group_id: int):
@@ -186,6 +193,9 @@ class ImageSearch:
             tg_file = await self.bot.bot.get_file(file_id)
         except Exception as e:
             log.error(f"Failed to get file for image search: {e}")
+            await self.app.botadmin.notify(
+                f"In Imagesearch: Failed to get file for image search: {e}"
+            )
             image_check.unknown = True
             await self.finish_image_check(
                 group_id,
@@ -204,6 +214,9 @@ class ImageSearch:
                 await tg_file.download_to_drive(custom_path=tmp_path)
             except Exception as e:
                 log.error(f"Failed to download file for image search: {e}")
+                await self.app.botadmin.notify(
+                    f"Failed to download file for image search: {e}"
+                )
                 image_check.unknown = True
                 await self.finish_image_check(
                     group_id,
@@ -242,6 +255,9 @@ class ImageSearch:
                             )
                         except Exception as e:
                             log.error(f"Failed to delete message: {e}")
+                            await self.app.botadmin.notify(
+                                f"In Imagessearch: Failed to delete message: {e}"
+                            )
 
                         await self.finish_image_check(
                             group_id, user, media_group_id, image_checks
@@ -371,6 +387,9 @@ class ImageSearch:
             async with session.get(f"https://e621.net/posts/{id}.json") as resp:
                 if resp.status != 200:
                     log.error(f"Failed to fetch e621 post {id}: HTTP {resp.status}")
+                    await self.app.botadmin.notify(
+                        f"In Imagesearch: Failed to fetch e621 post {id}: HTTP {resp.status}"
+                    )
                     return []
                 data = await resp.json()
                 tags = data.get("post", {}).get("tags", {}).get("general", [])
