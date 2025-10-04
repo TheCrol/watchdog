@@ -16,6 +16,7 @@ from .db import DB
 from .imagesearch import ImageSearch
 from .logger import setup_logger
 from .report import Report
+from .start import Start
 from .welcome import Welcome
 
 log = logging.getLogger("App")
@@ -60,10 +61,12 @@ class App:
         report = Report(self)
         welcome = Welcome(self)
         imagesearch = ImageSearch(self)
+        start = Start(self)
 
         await report.start()
         await welcome.start()
         await imagesearch.start()
+        await start.start()
 
         log.info("Watchdog has started!")
 
