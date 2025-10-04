@@ -15,6 +15,8 @@ from telegram import (
     MaybeInaccessibleMessage,
     Message,
     Update,
+    User,
+    error,
 )
 from telegram.ext import (
     Application,
@@ -29,7 +31,7 @@ from telegram.ext import (
     filters,
 )
 
-from ..useful import ACCESS, get_chat_name
+from ..useful import ACCESS, get_chat_name, mention_html
 from .command_updater import CommandUpdater
 
 if TYPE_CHECKING:
@@ -87,6 +89,7 @@ class ChatDataRegister:
 class Bot:
     def __init__(self, app: "App"):
         self.app = app
+        self.db = app.db
 
         self.commands: dict[str, list[Command]] = {}
         self.chat_data: dict[int | None, list[ChatData]] = {}
@@ -165,6 +168,7 @@ class Bot:
 
         asyncio.create_task(self.telegram.start())
         asyncio.create_task(self.cleanup())
+        asyncio.create_task(self.check_admins())
 
     async def stop(self):
         with suppress(RuntimeError):
@@ -187,6 +191,54 @@ class Bot:
             for message_id in to_delete:
                 del self.button_callbacks[message_id]
 
+    async def check_admins(self):
+        """Periodically fetch a list of admins for each group to ensure we have the latest info"""
+
+        while True:
+            blocked_chats: list[User] = []
+
+            for group in self.db.groups.values():
+                result = await self.app.bot.bot.get_chat_administrators(group.id)
+
+                # Scan through the list of current admins
+                # Send a ping to each admin to ensure we can chat with them
+                # And add any new admins we see
+                for admin in result:
+                    if not self.db.is_admin_of_group(admin.user.id, group.id):
+                        log.info(
+                            f"New admin {admin.user.full_name} in group {group.title}"
+                        )
+                        await self.db.update_admin(admin.user.id, group.id, True)
+
+                    # Ping the user to ensure we can chat with them
+                    try:
+                        await self.bot.send_chat_action(admin.user.id, "typing")
+                    except error.Forbidden:
+                        blocked_chats.append(admin.user)
+                    except Exception as e:
+                        log.error(f"Error pinging admin {admin.user.full_name}: {e}")
+
+            if blocked_chats:
+                names = ", ".join([get_chat_name(user) for user in blocked_chats])
+                html_names = ", ".join(
+                    [mention_html(user, False) for user in blocked_chats]
+                )
+
+                log.warning(f"Cannot send messages to admins: {names}")
+                await self.app.bot.bot.send_message(
+                    chat_id=group.id,
+                    text=f"❗{html_names}: Could you please open the chat with me so that I have the ability to send you admin-related messages?",
+                    parse_mode="HTML",
+                )
+
+                # Find any removed admins
+                for admin in self.db.get_group_admins(group.id):
+                    if admin.id not in [a.user.id for a in result]:
+                        log.info(f"{admin.name} is not admin anymore in {group.title}")
+                        await self.db.update_admin(admin.id, group.id, False)
+
+            await asyncio.sleep(60 * 60 * 24)  # Every 24 hours
+
     def member_enters_group(self, old: ChatMember, new: ChatMember) -> bool:
         IN_GROUP = ["creator", "administrator", "member", "restricted"]
         OUT_GROUP = ["left", "banned"]
@@ -206,8 +258,8 @@ class Bot:
 
         assert update.my_chat_member is not None
 
-        await self.app.db.update_chat(update.my_chat_member.chat)
-        await self.app.db.update_chat(update.my_chat_member.from_user)
+        await self.db.update_chat(update.my_chat_member.chat)
+        await self.db.update_chat(update.my_chat_member.from_user)
 
         if update.my_chat_member.chat.type not in ["group", "supergroup"]:
             log.debug(
@@ -239,7 +291,7 @@ class Bot:
             log.info(f"Added to group {get_chat_name(update.my_chat_member.chat)}")
 
             # Track this group in the database
-            await self.app.db.add_group(
+            await self.db.add_group(
                 update.my_chat_member.chat.id, update.my_chat_member.chat.title
             )
 
@@ -247,10 +299,8 @@ class Bot:
             chat = update.my_chat_member.chat
 
             for admin in await chat.get_administrators():
-                await self.app.db.add_user(admin.user)
-                await self.app.db.add_user_to_group(
-                    admin.user.id, chat.id, is_admin=True
-                )
+                await self.db.add_user(admin.user)
+                await self.db.add_user_to_group(admin.user.id, chat.id, is_admin=True)
 
             self.command_updater.commands_updated()
 
@@ -267,7 +317,7 @@ class Bot:
                 f"Got removed from group {get_chat_name(update.my_chat_member.chat)} by {get_chat_name(update.my_chat_member.from_user)}"
             )
 
-            await self.app.db.remove_group(update.my_chat_member.chat.id)
+            await self.db.remove_group(update.my_chat_member.chat.id)
 
             self.command_updater.commands_updated()
 
@@ -277,11 +327,11 @@ class Bot:
         assert update.chat_member is not None
 
         # Is this chat in our group?
-        if update.chat_member.chat.id not in self.app.db.groups:
+        if update.chat_member.chat.id not in self.db.groups:
             return
 
-        await self.app.db.update_chat(update.chat_member.from_user)
-        await self.app.db.update_chat(update.chat_member.chat)
+        await self.db.update_chat(update.chat_member.from_user)
+        await self.db.update_chat(update.chat_member.chat)
 
         if self.member_enters_group(
             update.chat_member.old_chat_member, update.chat_member.new_chat_member
@@ -292,8 +342,8 @@ class Bot:
             )
 
             # Record that this user is in this group
-            await self.app.db.add_user(update.chat_member.new_chat_member.user)
-            await self.app.db.add_user_to_group(
+            await self.db.add_user(update.chat_member.new_chat_member.user)
+            await self.db.add_user_to_group(
                 update.chat_member.new_chat_member.user.id, update.chat_member.chat.id
             )
 
@@ -306,7 +356,7 @@ class Bot:
             )
 
             # Remove that this user is in this group
-            await self.app.db.remove_user_from_group(
+            await self.db.remove_user_from_group(
                 update.chat_member.new_chat_member.user.id, update.chat_member.chat.id
             )
 
@@ -316,7 +366,7 @@ class Bot:
                 "administrator",
                 "creator",
             ]
-            await self.app.db.update_admin(
+            await self.db.update_admin(
                 update.chat_member.new_chat_member.user.id,
                 update.chat_member.chat.id,
                 is_admin,
@@ -329,15 +379,15 @@ class Bot:
     ) -> None:
         # Update any changed chat/user info if we already have a record of them
         if update.effective_chat is not None:
-            await self.app.db.update_chat(update.effective_chat)
+            await self.db.update_chat(update.effective_chat)
         if update.effective_user is not None:
-            await self.app.db.update_chat(update.effective_user)
+            await self.db.update_chat(update.effective_user)
 
         # Check if we know this user is in any of our groups
         if (
             update.effective_user is None
             or update.effective_chat is None
-            or update.effective_chat.id not in self.app.db.groups
+            or update.effective_chat.id not in self.db.groups
         ):
             return
 
@@ -346,14 +396,14 @@ class Bot:
             return
 
         # Record that this user is in this group
-        await self.app.db.add_user(update.effective_user)
-        await self.app.db.add_user_to_group(
+        await self.db.add_user(update.effective_user)
+        await self.db.add_user_to_group(
             update.effective_user.id, update.effective_chat.id
         )
 
         # Track activity if there is a message
         if update.message is not None:
-            await self.app.db.record_activity(
+            await self.db.record_activity(
                 update.effective_user.id, update.effective_chat.id
             )
 
@@ -455,8 +505,8 @@ class Bot:
             group_id = None
 
         is_bot_admin = user_id in self.app.bot_admins
-        is_admin = self.app.db.is_admin(user_id)
-        is_group_admin = group_id is not None and self.app.db.is_admin_of_group(
+        is_admin = self.db.is_admin(user_id)
+        is_group_admin = group_id is not None and self.db.is_admin_of_group(
             user_id, group_id
         )
 
@@ -503,8 +553,8 @@ class Bot:
             handlers=handlers,
             group_id=group_id,
             is_bot_admin=update.effective_user.id in self.app.bot_admins,
-            is_admin=self.app.db.is_admin(update.effective_user.id),
-            is_group_admin=self.app.db.is_admin_of_group(
+            is_admin=self.db.is_admin(update.effective_user.id),
+            is_group_admin=self.db.is_admin_of_group(
                 update.effective_user.id, update.effective_chat.id
             ),
         )
@@ -675,5 +725,4 @@ class Bot:
 
         await handler(update, context, update.message.text_html)
 
-        raise ApplicationHandlerStop
         raise ApplicationHandlerStop
