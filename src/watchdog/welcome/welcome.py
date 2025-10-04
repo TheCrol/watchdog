@@ -309,7 +309,11 @@ class Welcome:
         context: ContextTypes.DEFAULT_TYPE,
         text: str,
     ):
-        if not update.effective_user or not update.message:
+        if (message := update.effective_message) is None:
+            return
+
+        if text == "/cancel":
+            await message.reply_text("❌ Operation cancelled")
             return
 
         # Confirm this group still exists and we are admin
@@ -323,7 +327,7 @@ class Welcome:
         # Update the message in the database
         config = self.configs.get(group_id)
         if config is None or not config.enabled:
-            await update.message.reply_text(
+            await message.reply_text(
                 "⚠️ This group has disabled welcome messages, so you cannot set a welcome message"
             )
             return
@@ -332,4 +336,4 @@ class Welcome:
 
         await self.db.set_app_config("welcome", group_id, self.configs[group_id])
 
-        await update.message.reply_text("✅ The welcome message has been updated!")
+        await message.reply_text("✅ The welcome message has been updated!")
