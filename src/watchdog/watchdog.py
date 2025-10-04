@@ -13,6 +13,7 @@ from platformdirs import user_config_path, user_data_path
 from .bot import Bot
 from .botadmin import BotAdmin
 from .db import DB
+from .help import Help
 from .imagesearch import ImageSearch
 from .logger import setup_logger
 from .report import Report
@@ -62,11 +63,13 @@ class App:
         welcome = Welcome(self)
         imagesearch = ImageSearch(self)
         start = Start(self)
+        help = Help(self)
 
         await report.start()
         await welcome.start()
         await imagesearch.start()
         await start.start()
+        await help.start()
 
         log.info("Watchdog has started!")
 
