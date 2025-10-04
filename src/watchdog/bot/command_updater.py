@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import pickle
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generator
 
 from telegram import (
     BotCommandScope,
