@@ -97,12 +97,10 @@ class CommandUpdater:
 
         # Updated the scopes that have changed
         for scope, commands in self.find_changed_scopes(old_scopes, scopes).items():
-            log.debug(f"Updating commands for scope {scope}: {commands}")
             await self.bot.bot.set_my_commands(commands, scope=scope)
 
         # Remove old scopes
         for scope in self.find_remove_old_scopes(old_scopes, scopes):
-            log.debug(f"Removing old command scope: {scope}")
             await self.bot.bot.delete_my_commands(scope=scope)
 
         # Save the scopes for later use
