@@ -415,6 +415,36 @@ class Bot:
                 MessageHandler(filters.ALL, self.recv_chat_data), group=5
             )
 
+    def has_access_to_command(
+        self, command: Command, user_id: int | None, group_id: int | None
+    ) -> bool:
+        """
+        Check if a user has access to a command in a specific group
+        (or None for private)
+        """
+        if user_id is None:
+            # No particular user
+            user_id = 0
+
+        if group_id == user_id:
+            # This is a private chat
+            group_id = None
+
+        is_bot_admin = user_id in self.app.bot_admins
+        is_admin = self.app.db.is_admin(user_id)
+        is_group_admin = group_id is not None and self.app.db.is_admin_of_group(
+            user_id, group_id
+        )
+
+        handler = self.get_first_handler(
+            handlers=[command],
+            group_id=group_id,
+            is_bot_admin=is_bot_admin,
+            is_admin=is_admin,
+            is_group_admin=is_group_admin,
+        )
+        return handler is not None
+
     async def recv_command(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
