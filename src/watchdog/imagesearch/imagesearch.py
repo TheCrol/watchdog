@@ -9,9 +9,9 @@ import aiohttp
 from telegram import Update, User
 from telegram.ext import ContextTypes
 
-from ..bot import ChatDataRegister
+from ..bot import ChatDataRegister, CommandRegister
 from ..botadmin import AppConfig, AppEnabledConfig, TextConfig
-from ..useful import mention_html, pluralize
+from ..useful import ACCESS, mention_html, pluralize
 from .constants import DEFAULT_BANNED_TAGS, SELFTEST_HASH, ImageCheck
 from .matching import Matching
 
@@ -36,11 +36,12 @@ class ImageSearch:
         self.db = app.db
 
         self.configs: dict[int, Config] = {}
-        self.registers: dict[int, ChatDataRegister] = {}
+        self.registers: dict[int, tuple[ChatDataRegister, ChatDataRegister]] = {}
+        self.dm_register: None | CommandRegister = None
 
         self.test_image_path = Path(__file__).parent / "selftest.jpg"
 
-        self.ongoing_image_checks: dict[int, dict[str, list[ImageCheck]]] = {}
+        self.ongoing_image_checks: dict[str, list[ImageCheck]] = {}
 
     async def start(self):
         if self.app.imghash_bin is None:
@@ -139,39 +140,63 @@ class ImageSearch:
         if group_id in self.registers:
             return
 
-        chat_data = self.bot.register_chat_data(self.bot_chat_data, group_id)
+        chat_data_group = self.bot.register_chat_data(self.bot_chat_data, group_id)
+        chat_data_dm = self.bot.register_chat_data(self.bot_chat_data, None)
 
-        self.registers[group_id] = chat_data
+        self.registers[group_id] = (chat_data_group, chat_data_dm)
+
+        # Enable the DM register if not already enabled
+        if self.dm_register is None:
+            self.dm_register = self.bot.register_command(
+                "identifyimage",
+                "Find the source for furry art",
+                self.cmd_identifyimage,
+                ACCESS.EVERYONE_DM,
+            )
 
     def remove_group_register(self, group_id: int):
-        registers = self.registers.pop(group_id, None)
-        if not registers:
-            return
-        registers.deregister_chat_data()
+        for register in self.registers.pop(group_id, []):
+            register.deregister_chat_data()
+
+        # Remove the DM register if no more groups are registered
+        if not self.registers and self.dm_register is not None:
+            self.dm_register.deregister_command()
+            self.dm_register = None
 
     async def bot_chat_data(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not update.message or not update.effective_user or not update.effective_chat:
+        if (
+            (message := update.effective_message) is None
+            or (user := update.effective_user) is None
+            or (chat := update.effective_chat) is None
+        ):
             return
 
         # Check if this is an image upload
-        if not update.message.photo:
+        if not message.photo:
             return
 
-        photo = update.message.photo[-1]
+        photo = message.photo[-1]
+
+        group_id = None if chat.type == "private" else chat.id
+
+        if group_id is None:
+            # Send typing... action in private chats
+            await message.reply_chat_action("typing")
+
         asyncio.create_task(
             self.check_image(
-                group_id=update.effective_chat.id,
-                user=update.effective_user,
-                message_id=update.message.message_id,
+                group_id=group_id,
+                user=user,
+                message_id=message.message_id,
                 file_id=photo.file_id,
-                caption=update.message.caption,
-                media_group_id=update.message.media_group_id,
+                caption=message.caption,
+                media_group_id=message.media_group_id,
             )
         )
 
     async def check_image(
         self,
-        group_id: int,
+        group_id: int | None,
         user: User,
         message_id: int,
         file_id: str,
@@ -182,8 +207,7 @@ class ImageSearch:
 
         # This is part of a media group
         if media_group_id:
-            group_image_checks = self.ongoing_image_checks.setdefault(group_id, {})
-            image_checks = group_image_checks.setdefault(media_group_id, [])
+            image_checks = self.ongoing_image_checks.setdefault(media_group_id, [])
             image_checks.append(image_check)
         else:
             # This is just a single image
@@ -241,28 +265,31 @@ class ImageSearch:
             # Match this hash against the our database
             matches = await self.matching.find_hash_matches(hash_value)
 
-            # Scan any e621 matches for banned tags
-            for match in matches:
-                if match.site == "e621":
-                    banned_tags = await self.has_banned_e621_tags(group_id, match.id)
-                    if banned_tags:
-                        # Remove the image and send a message
-                        image_check.deleted = banned_tags
-                        try:
-                            await self.bot.bot.delete_message(
-                                chat_id=group_id,
-                                message_id=message_id,
-                            )
-                        except Exception as e:
-                            log.error(f"Failed to delete message: {e}")
-                            await self.app.botadmin.notify(
-                                f"In Imagessearch: Failed to delete message: {e}"
-                            )
-
-                        await self.finish_image_check(
-                            group_id, user, media_group_id, image_checks
+            if group_id:
+                # Scan any e621 matches for banned tags
+                for match in matches:
+                    if match.site == "e621":
+                        banned_tags = await self.has_banned_e621_tags(
+                            group_id, match.id
                         )
-                        return
+                        if banned_tags:
+                            # Remove the image and send a message
+                            image_check.deleted = banned_tags
+                            try:
+                                await self.bot.bot.delete_message(
+                                    chat_id=group_id,
+                                    message_id=message_id,
+                                )
+                            except Exception as e:
+                                log.error(f"Failed to delete message: {e}")
+                                await self.app.botadmin.notify(
+                                    f"In Imagessearch: Failed to delete message: {e}"
+                                )
+
+                            await self.finish_image_check(
+                                group_id, user, media_group_id, image_checks
+                            )
+                            return
 
             if not matches:
                 image_check.unknown = True
@@ -278,7 +305,7 @@ class ImageSearch:
 
     async def finish_image_check(
         self,
-        group_id: int,
+        group_id: int | None,
         user: User,
         media_group_id: str | None,
         image_checks: list[ImageCheck],
@@ -288,7 +315,7 @@ class ImageSearch:
             return
 
         if media_group_id:
-            self.ongoing_image_checks[group_id].pop(media_group_id, None)
+            self.ongoing_image_checks.pop(media_group_id, None)
 
         # Are there any deleted message?
         # Collect all the banned tags that were found
@@ -314,8 +341,9 @@ class ImageSearch:
                 msg = f"❌ {mention_html(user)}: Unfortunately, {pluralize(amount_deleted, 'image was', 'images were')} removed {reason}"
 
             # Send the message
+            chat_id = group_id if group_id is not None else user.id
             await self.bot.bot.send_message(
-                chat_id=group_id,
+                chat_id=chat_id,
                 text=msg,
                 parse_mode="HTML",
             )
@@ -355,16 +383,35 @@ class ImageSearch:
 
             message.append("\n".join(single_result))
 
+        send_id = group_id if group_id is not None else user.id
+
         if len(message) != 0:
+            # We have matches
+
             # Find the one with the lowest message ID to reply to
             reply_to_message_id = min(
                 ic.message_id for ic in image_checks if ic.results
             )
+
             await self.bot.bot.send_message(
-                chat_id=group_id,
+                chat_id=send_id,
                 text="\n".join(message),
                 reply_to_message_id=reply_to_message_id,
                 disable_web_page_preview=True,
+                parse_mode="HTML",
+            )
+
+        elif group_id is None:
+            # No results found, and this was a DM
+            send_id = user.id
+            if len(image_checks) == 1:
+                msg = "Sorry, I couldn't find any matches for this image. Note that if the art is newer than 7 days, it may not be in my database yet."
+            else:
+                msg = "Sorry, I couldn't find any matches for these images. Note that if the art is newer than 7 days, it may not be in my database yet."
+
+            await self.bot.bot.send_message(
+                chat_id=send_id,
+                text=msg,
                 parse_mode="HTML",
             )
 
@@ -436,3 +483,17 @@ class ImageSearch:
             self.configs[group_id] = Config(forbidden_tags=tags)
 
         await self.db.set_app_config("imagesearch", group_id, self.configs[group_id])
+
+    async def cmd_identifyimage(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE, args: str
+    ):
+        if (message := update.effective_message) is None:
+            return
+
+        await message.reply_html(
+            (
+                "🖼️ You can upload an image to me in this chat, or forward a "
+                "message with an image in it, and I will try to find the source "
+                "for it if it's in Furaffinity or e621!"
+            )
+        )

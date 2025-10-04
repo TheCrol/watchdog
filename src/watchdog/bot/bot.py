@@ -7,27 +7,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 from telegram import Bot as TGbot
-from telegram import (
-    ChatAdministratorRights,
-    ChatMember,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    MaybeInaccessibleMessage,
-    Message,
-    Update,
-)
-from telegram.ext import (
-    Application,
-    ApplicationBuilder,
-    ApplicationHandlerStop,
-    CallbackContext,
-    CallbackQueryHandler,
-    ChatMemberHandler,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-)
+from telegram import (ChatAdministratorRights, ChatMember,
+                      InlineKeyboardButton, InlineKeyboardMarkup,
+                      MaybeInaccessibleMessage, Message, Update)
+from telegram.ext import (Application, ApplicationBuilder,
+                          ApplicationHandlerStop, CallbackContext,
+                          CallbackQueryHandler, ChatMemberHandler,
+                          CommandHandler, ContextTypes, MessageHandler,
+                          filters)
 
 from ..useful import ACCESS, get_chat_name
 from .command_updater import CommandUpdater
@@ -60,7 +47,7 @@ class Buttons:
 @dataclass
 class ChatData:
     handler: MESSAGE_HANDLER
-    group_id: int
+    group_id: int | None
 
 
 class CommandRegister:
@@ -74,7 +61,7 @@ class CommandRegister:
 
 
 class ChatDataRegister:
-    def __init__(self, bot: "Bot", group_id: int, chat_data_class: ChatData):
+    def __init__(self, bot: "Bot", group_id: int | None, chat_data_class: ChatData):
         self.bot = bot
         self.group_id = group_id
         self.chat_data_class = chat_data_class
@@ -88,7 +75,7 @@ class Bot:
         self.app = app
 
         self.commands: dict[str, list[Command]] = {}
-        self.chat_data: dict[int, list[ChatData]] = {}
+        self.chat_data: dict[int | None, list[ChatData]] = {}
         self.button_callbacks: dict[int, Buttons] = {}  # TODO: Cleanup old ones
 
         self.command_updater = CommandUpdater(self.app, self)
@@ -382,8 +369,13 @@ class Bot:
         self.command_updater.commands_updated()
 
     def register_chat_data(
-        self, handler: MESSAGE_HANDLER, group_id: int
+        self, handler: MESSAGE_HANDLER, group_id: int | None
     ) -> ChatDataRegister:
+        """
+        Register a chat data handler for a specific group to receive all
+        incoming updates from a group. Set group_id to None to receive from
+        private chats instead.
+        """
         chat_data_class = ChatData(handler, group_id)
 
         chat_data = self.chat_data.setdefault(group_id, [])
@@ -398,7 +390,7 @@ class Bot:
 
     def deregister_chat_data(
         self,
-        group_id: int,
+        group_id: int | None,
         chat_data_class: ChatData,
     ) -> None:
         chat_data = self.chat_data.get(group_id)
@@ -509,16 +501,13 @@ class Bot:
     async def recv_chat_data(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
-        if (
-            update.message is None
-            or update.effective_user is None
-            or update.effective_chat is None
-        ):
+        if (chat := update.effective_chat) is None:
             return
 
-        chat_data = self.chat_data.get(update.effective_chat.id)
-        if not chat_data:
-            return
+        if chat.type == "private":
+            chat_data = self.chat_data.get(None, [])
+        else:
+            chat_data = self.chat_data.get(chat.id, [])
 
         for chat_data_class in chat_data:
             await chat_data_class.handler(update, context)
