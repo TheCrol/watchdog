@@ -7,14 +7,27 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 from telegram import Bot as TGbot
-from telegram import (ChatAdministratorRights, ChatMember,
-                      InlineKeyboardButton, InlineKeyboardMarkup,
-                      MaybeInaccessibleMessage, Message, Update)
-from telegram.ext import (Application, ApplicationBuilder,
-                          ApplicationHandlerStop, CallbackContext,
-                          CallbackQueryHandler, ChatMemberHandler,
-                          CommandHandler, ContextTypes, MessageHandler,
-                          filters)
+from telegram import (
+    ChatAdministratorRights,
+    ChatMember,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    MaybeInaccessibleMessage,
+    Message,
+    Update,
+)
+from telegram.ext import (
+    Application,
+    ApplicationBuilder,
+    ApplicationHandlerStop,
+    CallbackContext,
+    CallbackQueryHandler,
+    ChatMemberHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 from ..useful import ACCESS, get_chat_name
 from .command_updater import CommandUpdater
@@ -28,6 +41,7 @@ COMMAND_HANDLER = Callable[[Update, ContextTypes.DEFAULT_TYPE, str], Awaitable[N
 BUTTON_HANDLER = Callable[[Update, CallbackContext], Awaitable[None]]
 REPLY_HANDLER = Callable[[Update, ContextTypes.DEFAULT_TYPE, str], Awaitable[None]]
 MESSAGE_HANDLER = Callable[[Update, ContextTypes.DEFAULT_TYPE], Awaitable[None]]
+BUTTON_HANDLERS_REMOVED_AFTER = 60 * 60 * 3  # 3 hours
 
 
 @dataclass
@@ -76,7 +90,7 @@ class Bot:
 
         self.commands: dict[str, list[Command]] = {}
         self.chat_data: dict[int | None, list[ChatData]] = {}
-        self.button_callbacks: dict[int, Buttons] = {}  # TODO: Cleanup old ones
+        self.button_callbacks: dict[int, Buttons] = {}
 
         self.command_updater = CommandUpdater(self.app, self)
 
@@ -150,6 +164,7 @@ class Bot:
         self.command_updater_task: None | asyncio.Task = None
 
         asyncio.create_task(self.telegram.start())
+        asyncio.create_task(self.cleanup())
 
     async def stop(self):
         with suppress(RuntimeError):
@@ -157,6 +172,20 @@ class Bot:
                 await self.telegram.updater.stop()
             await self.telegram.stop()
             await self.telegram.shutdown()
+
+    async def cleanup(self):
+        while 1:
+            await asyncio.sleep(60)
+
+            # Clean up old button handlers
+            now = time.time()
+            to_delete = []
+            for message_id, buttons in self.button_callbacks.items():
+                if now - buttons.when > BUTTON_HANDLERS_REMOVED_AFTER:
+                    to_delete.append(message_id)
+
+            for message_id in to_delete:
+                del self.button_callbacks[message_id]
 
     def member_enters_group(self, old: ChatMember, new: ChatMember) -> bool:
         IN_GROUP = ["creator", "administrator", "member", "restricted"]
