@@ -226,6 +226,9 @@ class Bot:
                 log.warning(
                     f"Added to group {get_chat_name(update.my_chat_member.chat)} by non-admin {get_chat_name(update.my_chat_member.from_user)}. Leaving"
                 )
+                await self.app.botadmin.notify(
+                    f"Got added to group {get_chat_name(update.my_chat_member.chat)} by non-admin {get_chat_name(update.my_chat_member.from_user)}. Leaving"
+                )
                 await context.bot.send_message(
                     update.my_chat_member.chat.id,
                     "Sorry, I can only be added to groups by my bot admin",
