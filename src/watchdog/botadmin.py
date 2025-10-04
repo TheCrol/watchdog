@@ -128,7 +128,7 @@ class BotAdmin:
         def create_button(app_config: AppConfig | str) -> tuple[str, BUTTON_HANDLER]:
             if isinstance(app_config, str):
                 if app_config == "leave":
-                    return ("❌ Leave group", self.btn_dummy)
+                    return ("❌ Leave group", partial(self.btn_leave_group, group_id))
                 elif app_config == "back":
                     return ("🔙 Back", self.btn_show_groups)
                 raise ValueError("Unknown string button")
@@ -377,8 +377,55 @@ class BotAdmin:
             ),
         )
 
-    async def btn_dummy(self, update: Update, context: CallbackContext):
-        log.debug("Dummy button pressed")
+    async def btn_leave_group(
+        self, group_id: int, update: Update, context: CallbackContext
+    ):
+        # Confirm that the admin wants to leave the group
+        if (
+            update.callback_query is None
+            or (message := update.callback_query.message) is None
+        ):
+            return
+
+        group = self.db.groups.get(group_id)
+        if group is None:
+            return
+
+        await self.bot.send_or_replace_message_buttons(
+            message,
+            f"⚠️ Are you sure you want me to leave the group '{group.title}'?",
+            [
+                [
+                    ("✅ Yes, leave", partial(self.btn_confirm_leave_group, group_id)),
+                    ("❌ No, go back", partial(self.btn_select_group, group_id)),
+                ]
+            ],
+        )
+
+    async def btn_confirm_leave_group(
+        self, group_id: int, update: Update, context: CallbackContext
+    ):
+        if (
+            update.callback_query is None
+            or (message := update.callback_query.message) is None
+        ):
+            return
+
+        group = self.db.groups.get(group_id)
+        if group is None:
+            return
+
+        await update.callback_query.answer()
+
+        # Leave the group
+        await self.bot.bot.leave_chat(group_id)
+        await self.bot.bot.send_message(
+            message.chat.id, f"👋 I have left the group '{group.title}'."
+        )
+        log.info(f"Left group '{group.title}' (ID: {group.id}) as requested by admin.")
+
+        # Clean up the database
+        await self.db.remove_group(group_id)
 
     async def reply_text_config(
         self,

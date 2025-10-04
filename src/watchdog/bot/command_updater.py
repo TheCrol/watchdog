@@ -101,7 +101,10 @@ class CommandUpdater:
 
         # Remove old scopes
         for scope in self.find_remove_old_scopes(old_scopes, scopes):
-            await self.bot.bot.delete_my_commands(scope=scope)
+            try:
+                await self.bot.bot.delete_my_commands(scope=scope)
+            except Exception as e:
+                log.error(f"Failed to remove old command scope {scope}: {e}")
 
         # Save the scopes for later use
         self.save_scopes(scopes)
