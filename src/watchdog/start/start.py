@@ -50,7 +50,8 @@ class Start:
             # This user is an admin in one or more groups
             groups_str = ", ".join(group.title for group in groups)
             text = (
-                f"Hello {update.effective_user.full_name}! You are an admin in the following groups: {groups_str}\n\n"
+                f"Hello {update.effective_user.full_name}! You are an admin in the following groups: {groups_str}\n"
+                "Please keep this chat with me open, so you can receive important messages related to the groups\n\n"
                 "Use /help to see what I can do."
             )
 
