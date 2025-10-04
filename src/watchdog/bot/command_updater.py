@@ -7,7 +7,6 @@ from telegram import (
     BotCommandScope,
     BotCommandScopeAllPrivateChats,
     BotCommandScopeChat,
-    BotCommandScopeChatAdministrators,
     BotCommandScopeChatMember,
 )
 
@@ -112,7 +111,6 @@ class CommandUpdater:
 
         for group_id, commands in self.all_admins.items():
             commands.extend(self.everyone.get(group_id, []))
-            commands.extend(self.group_admins.get(group_id, []))
 
         for group_id, commands in self.bot_admin.items():
             commands.extend(self.everyone.get(group_id, []))
@@ -134,16 +132,19 @@ class CommandUpdater:
         for group_id, commands in self.everyone.items():
             scopes.append((commands, BotCommandScopeChat(group_id)))
 
-        # Group admins
-        for group_id, commands in self.group_admins.items():
-            scopes.append((commands, BotCommandScopeChatAdministrators(group_id)))
-
-        # All admins
+        # Admins
         for group_id, commands in self.all_admins.items():
             for user in self.db.get_all_group_admins():
                 if user.id in self.app.bot_admins:
                     continue  # Bot admins will be handled later
-                scopes.append((commands, BotCommandScopeChatMember(group_id, user.id)))
+                if self.db.is_admin_of_group(user.id, group_id):
+                    # Apply group admin commands as well
+                    extended_commands = commands + self.group_admins.get(group_id, [])
+                else:
+                    extended_commands = commands
+                scopes.append(
+                    (extended_commands, BotCommandScopeChatMember(group_id, user.id))
+                )
 
         # Admins in private chats
         if self.all_admins_dm:
