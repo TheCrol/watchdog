@@ -6,13 +6,13 @@ from typing import TYPE_CHECKING
 from telegram import MaybeInaccessibleMessage, Message, Update
 from telegram.ext import CallbackContext, ContextTypes
 
-from .bot import BUTTON_HANDLER, ChatDataRegister
-from .botadmin import AppConfig, AppEnabledConfig, TextConfig
-from .db import Group
-from .useful import ACCESS, mention_html
+from ..bot import BUTTON_HANDLER, ChatDataRegister
+from ..botadmin import AppConfig, AppEnabledConfig, TextConfig
+from ..db import Group
+from ..useful import ACCESS, mention_html
 
 if TYPE_CHECKING:
-    from .watchdog import App
+    from ..watchdog import App
 
 DEFAULT_MESSAGE = "Welcome to the group, {name}!"
 
