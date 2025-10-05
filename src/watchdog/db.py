@@ -1,12 +1,11 @@
 import asyncio
-import json
 import logging
 import time
-from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Any, Type, TypeVar
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Type, TypeVar
 
 import aiosqlite
-from dacite import from_dict
+from pydantic import BaseModel
 from telegram import Chat
 from telegram import User as TGUser
 
@@ -15,7 +14,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-T = TypeVar("T")
+BASEMODEL = TypeVar("BASEMODEL", bound=BaseModel)
 
 
 @dataclass
@@ -361,7 +360,7 @@ class DB:
                     groups.append(group)
         return groups
 
-    async def get_app_configs(self, app: str, data_class: Type[T]) -> T:
+    async def get_app_config(self, app: str, config: Type[BASEMODEL]) -> BASEMODEL:
         """Get all configurations for a specific app, for all groups"""
 
         async with self.db.execute(
@@ -369,15 +368,14 @@ class DB:
         ) as cursor:
             # Fetch one row, if it exists
             if row := await cursor.fetchone():
-                config_str = row["config"]
-                config = json.loads(config_str)
-                return from_dict(data_class, config)
+                return config.model_validate_json(row["config"])
 
-        return data_class()  # Return default if no config found
+        return config()  # Return default if no config found
 
-    async def set_app_config(self, app: str, config: Any) -> None:
+    async def set_app_config(self, app: str, config: BaseModel) -> None:
         """Set the configuration for a specific app in a specific group"""
-        config_str = json.dumps(asdict(config))
+
+        config_str = config.model_dump_json()
 
         await self.db.execute(
             """

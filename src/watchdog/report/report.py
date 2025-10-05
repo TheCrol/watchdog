@@ -1,5 +1,4 @@
 import logging
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from telegram import Message, Update
@@ -8,21 +7,12 @@ from telegram.ext import ContextTypes
 from ..bot import ChatDataRegister, CommandRegister
 from ..botadmin import AppConfig, AppEnabledConfig
 from ..useful import ACCESS, mention_html, pluralize
+from .config import Config, GroupConfig
 
 if TYPE_CHECKING:
     from ..watchdog import App
 
 log = logging.getLogger("report")
-
-
-@dataclass
-class ConfigGroup:
-    enabled: bool
-
-
-@dataclass
-class Config:
-    groups: dict[int, ConfigGroup] = field(default_factory=dict)
 
 
 class Report:
@@ -36,7 +26,7 @@ class Report:
         self.unhandled_reports: dict[int, list[Message]] = {}
 
     async def start(self):
-        self.config = await self.db.get_app_configs("reports", Config)
+        self.config = await self.db.get_app_config("reports", Config)
 
         for group_id, config in self.config.groups.items():
             if not config.enabled:
@@ -92,7 +82,7 @@ class Report:
         if config := self.config.groups.get(group_id):
             config.enabled = value
         else:
-            self.config.groups[group_id] = ConfigGroup(enabled=value)
+            self.config.groups[group_id] = GroupConfig(enabled=value)
 
         await self.db.set_app_config("reports", self.config)
 

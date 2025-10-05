@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import tempfile
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,8 +11,8 @@ from telegram.ext import ContextTypes
 from ..bot import ChatDataRegister, CommandRegister
 from ..botadmin import AppConfig, AppEnabledConfig, TextConfig
 from ..useful import ACCESS, mention_html, pluralize
+from .config import Config, GroupConfig
 from .constants import (
-    DEFAULT_BANNED_TAGS,
     MAX_SIMULTANEOUS_E621_CHECKS,
     MAX_SIMULTANEOUS_IMAGE_CHECKS,
     SELFTEST_HASH,
@@ -25,19 +24,6 @@ if TYPE_CHECKING:
     from ..watchdog import App
 
 log = logging.getLogger("imagesearch")
-
-
-@dataclass
-class ConfigGroup:
-    enabled: bool = False
-    forbidden_tags: list[str] = field(
-        default_factory=lambda: DEFAULT_BANNED_TAGS.copy()
-    )
-
-
-@dataclass
-class Config:
-    groups: dict[int, ConfigGroup] = field(default_factory=dict)
 
 
 class ImageSearch:
@@ -66,7 +52,7 @@ class ImageSearch:
         if not await self.perform_selftest():
             return
 
-        self.config = await self.db.get_app_configs("imagesearch", Config)
+        self.config = await self.db.get_app_config("imagesearch", Config)
 
         self.matching = Matching(self.app)
         self.matching.start()
@@ -476,7 +462,7 @@ class ImageSearch:
         if config := self.config.groups.get(group_id):
             config.enabled = value
         else:
-            self.config.groups[group_id] = ConfigGroup(enabled=value)
+            self.config.groups[group_id] = GroupConfig(enabled=value)
 
         await self.db.set_app_config("imagesearch", self.config)
 
@@ -495,7 +481,7 @@ class ImageSearch:
         if config := self.config.groups.get(group_id):
             config.forbidden_tags = tags
         else:
-            self.config.groups[group_id] = ConfigGroup(forbidden_tags=tags)
+            self.config.groups[group_id] = GroupConfig(forbidden_tags=tags)
 
         await self.db.set_app_config("imagesearch", self.config)
 

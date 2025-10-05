@@ -1,5 +1,4 @@
 import logging
-from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -10,24 +9,12 @@ from ..bot import BUTTON_HANDLER, ChatDataRegister
 from ..botadmin import AppConfig, AppEnabledConfig, TextConfig
 from ..db import Group
 from ..useful import ACCESS, mention_html
+from .config import Config, GroupConfig
 
 if TYPE_CHECKING:
     from ..watchdog import App
 
-DEFAULT_MESSAGE = "Welcome to the group, {name}!"
-
 log = logging.getLogger("welcome")
-
-
-@dataclass
-class ConfigGroup:
-    enabled: bool = False
-    message: str = DEFAULT_MESSAGE
-
-
-@dataclass
-class Config:
-    groups: dict[int, ConfigGroup] = field(default_factory=dict)
 
 
 class Welcome:
@@ -39,7 +26,7 @@ class Welcome:
         self.registers: dict[int, ChatDataRegister] = {}
 
     async def start(self):
-        self.config = await self.db.get_app_configs("welcome", Config)
+        self.config = await self.db.get_app_config("welcome", Config)
 
         for group_id, config in self.config.groups.items():
             if not config.enabled:
@@ -132,7 +119,7 @@ class Welcome:
         if config := self.config.groups.get(group_id):
             config.enabled = value
         else:
-            self.config.groups[group_id] = ConfigGroup(enabled=value)
+            self.config.groups[group_id] = GroupConfig(enabled=value)
 
         await self.db.set_app_config("welcome", self.config)
 
@@ -150,7 +137,7 @@ class Welcome:
         if config := self.config.groups.get(group_id):
             config.message = value
         else:
-            self.config.groups[group_id] = ConfigGroup(enabled=False, message=value)
+            self.config.groups[group_id] = GroupConfig(enabled=False, message=value)
 
         await self.db.set_app_config("welcome", self.config)
 
