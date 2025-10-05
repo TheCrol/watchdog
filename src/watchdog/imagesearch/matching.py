@@ -18,7 +18,7 @@ import numpy as np
 
 from .constants import CHECK_DB_EVERY, GET_DB_DUMP_URL, ImageCheckResult
 
-log = logging.getLogger("imagesearch.db_fetch")
+log = logging.getLogger("imagesearch.matching")
 
 if TYPE_CHECKING:
     from ..watchdog import App
@@ -215,7 +215,6 @@ class Matching:
     async def get_db_dump_url(self) -> None | str:
         """Check for a new database dump url"""
 
-        log.debug("Checking for new DB dump URL")
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(GET_DB_DUMP_URL) as resp:
