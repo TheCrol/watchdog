@@ -4,9 +4,6 @@ SELFTEST_HASH = -3722692567699475621
 CHECK_DB_EVERY = 60 * 60  # Check the database every hour
 GET_DB_DUMP_URL = "https://api-next.fuzzysearch.net/v1/dump/latest"
 DEFAULT_BANNED_TAGS = ["cub", "young"]
-HASH_MATCH_THRESHOLD = (
-    3  # Minimum number of bits that must match to be considered a match
-)
 
 
 @dataclass
