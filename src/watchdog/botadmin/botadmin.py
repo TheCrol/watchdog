@@ -8,11 +8,11 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 from telegram import MaybeInaccessibleMessage, Message, Update
 from telegram.ext import CallbackContext, ContextTypes
 
-from .bot import BUTTON_HANDLER
-from .useful import ACCESS, pluralize
+from ..bot import BUTTON_HANDLER
+from ..useful import ACCESS, pluralize
 
 if TYPE_CHECKING:
-    from .watchdog import App
+    from ..watchdog import App
 
 log = logging.getLogger(__name__)
 
