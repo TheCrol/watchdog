@@ -12,7 +12,13 @@ from telegram.ext import ContextTypes
 from ..bot import ChatDataRegister, CommandRegister
 from ..botadmin import AppConfig, AppEnabledConfig, TextConfig
 from ..useful import ACCESS, mention_html, pluralize
-from .constants import DEFAULT_BANNED_TAGS, SELFTEST_HASH, ImageCheck
+from .constants import (
+    DEFAULT_BANNED_TAGS,
+    MAX_SIMULTANEOUS_E621_CHECKS,
+    MAX_SIMULTANEOUS_IMAGE_CHECKS,
+    SELFTEST_HASH,
+    ImageCheck,
+)
 from .matching import Matching
 
 if TYPE_CHECKING:
@@ -42,6 +48,9 @@ class ImageSearch:
         self.test_image_path = Path(__file__).parent / "selftest.jpg"
 
         self.ongoing_image_checks: dict[str, list[ImageCheck]] = {}
+
+        self.image_check_semaphore = asyncio.Semaphore(MAX_SIMULTANEOUS_IMAGE_CHECKS)
+        self.e621_check_semaphore = asyncio.Semaphore(MAX_SIMULTANEOUS_E621_CHECKS)
 
     async def start(self):
         if self.app.imghash_bin is None:
@@ -213,33 +222,13 @@ class ImageSearch:
             # This is just a single image
             image_checks = [image_check]
 
-        try:
-            tg_file = await self.bot.bot.get_file(file_id)
-        except Exception as e:
-            log.error(f"Failed to get file for image search: {e}")
-            await self.app.botadmin.notify(
-                f"In Imagesearch: Failed to get file for image search: {e}"
-            )
-            image_check.unknown = True
-            await self.finish_image_check(
-                group_id,
-                user,
-                media_group_id,
-                image_checks,
-            )
-            return
-
-        # Download the file to a temporary location
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            tmp_path = Path(tmpdirname) / "image.jpg"
-
-            # Download the image
+        async with self.image_check_semaphore:
             try:
-                await tg_file.download_to_drive(custom_path=tmp_path)
+                tg_file = await self.bot.bot.get_file(file_id)
             except Exception as e:
-                log.error(f"Failed to download file for image search: {e}")
+                log.error(f"Failed to get file for image search: {e}")
                 await self.app.botadmin.notify(
-                    f"Failed to download file for image search: {e}"
+                    f"In Imagesearch: Failed to get file for image search: {e}"
                 )
                 image_check.unknown = True
                 await self.finish_image_check(
@@ -250,25 +239,47 @@ class ImageSearch:
                 )
                 return
 
-            # Hash the image
-            hash_value = await self.get_hash(tmp_path)
-            if hash_value is None:
-                image_check.unknown = True
-                await self.finish_image_check(
-                    group_id,
-                    user,
-                    media_group_id,
-                    image_checks,
-                )
-                return
+            # Download the file to a temporary location
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmp_path = Path(tmpdirname) / "image.jpg"
+
+                # Download the image
+                try:
+                    await tg_file.download_to_drive(custom_path=tmp_path)
+                except Exception as e:
+                    log.error(f"Failed to download file for image search: {e}")
+                    await self.app.botadmin.notify(
+                        f"Failed to download file for image search: {e}"
+                    )
+                    image_check.unknown = True
+                    await self.finish_image_check(
+                        group_id,
+                        user,
+                        media_group_id,
+                        image_checks,
+                    )
+                    return
+
+                # Hash the image
+                hash_value = await self.get_hash(tmp_path)
+                if hash_value is None:
+                    image_check.unknown = True
+                    await self.finish_image_check(
+                        group_id,
+                        user,
+                        media_group_id,
+                        image_checks,
+                    )
+                    return
 
             # Match this hash against the our database
             matches = await self.matching.find_hash_matches(hash_value)
 
-            if group_id:
-                # Scan any e621 matches for banned tags
-                for match in matches:
-                    if match.site == "e621":
+        if group_id:
+            # Scan any e621 matches for banned tags
+            for match in matches:
+                if match.site == "e621":
+                    async with self.e621_check_semaphore:
                         banned_tags = await self.has_banned_e621_tags(
                             group_id, match.id
                         )
@@ -291,17 +302,17 @@ class ImageSearch:
                             )
                             return
 
-            if not matches:
-                image_check.unknown = True
-            else:
-                image_check.results = matches
+        if not matches:
+            image_check.unknown = True
+        else:
+            image_check.results = matches
 
-            await self.finish_image_check(
-                group_id,
-                user,
-                media_group_id,
-                image_checks,
-            )
+        await self.finish_image_check(
+            group_id,
+            user,
+            media_group_id,
+            image_checks,
+        )
 
     async def finish_image_check(
         self,
