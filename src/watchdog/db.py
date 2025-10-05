@@ -110,10 +110,8 @@ class DB:
         await self.db.execute(
             """
             CREATE TABLE IF NOT EXISTS apps (
-                app TEXT NOT NULL,
-                group_id INTEGER NOT NULL,
-                config TEXT NOT NULL,
-                PRIMARY KEY(app, group_id)
+                app TEXT PRIMARY KEY,
+                config TEXT NOT NULL
             )
             """
         )
@@ -363,31 +361,29 @@ class DB:
                     groups.append(group)
         return groups
 
-    async def get_app_configs(self, app: str, data_class: Type[T]) -> dict[int, T]:
+    async def get_app_configs(self, app: str, data_class: Type[T]) -> T:
         """Get all configurations for a specific app, for all groups"""
 
-        configs: dict[int, T] = {}
-
         async with self.db.execute(
-            "SELECT group_id, config FROM apps WHERE app = ?", (app,)
+            "SELECT config FROM apps WHERE app = ?", (app,)
         ) as cursor:
-            async for row in cursor:
-                group_id = row["group_id"]
+            # Fetch one row, if it exists
+            if row := await cursor.fetchone():
                 config_str = row["config"]
                 config = json.loads(config_str)
-                data = from_dict(data_class, config)
-                configs[group_id] = data
-        return configs
+                return from_dict(data_class, config)
 
-    async def set_app_config(self, app: str, group_id: int, config: Any) -> None:
+        return data_class()  # Return default if no config found
+
+    async def set_app_config(self, app: str, config: Any) -> None:
         """Set the configuration for a specific app in a specific group"""
         config_str = json.dumps(asdict(config))
 
         await self.db.execute(
             """
-            INSERT OR REPLACE INTO apps (app, group_id, config)
-            VALUES (?, ?, ?)
+            INSERT OR REPLACE INTO apps (app, config)
+            VALUES (?, ?)
             """,
-            (app, group_id, config_str),
+            (app, config_str),
         )
         await self.db.commit()

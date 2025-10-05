@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from telegram import Message, Update
@@ -16,8 +16,13 @@ log = logging.getLogger("report")
 
 
 @dataclass
-class Config:
+class ConfigGroup:
     enabled: bool
+
+
+@dataclass
+class Config:
+    groups: dict[int, ConfigGroup] = field(default_factory=dict)
 
 
 class Report:
@@ -26,15 +31,14 @@ class Report:
         self.bot = app.bot
         self.db = app.db
 
-        self.configs: dict[int, Config] = {}
         self.registers: dict[int, tuple[CommandRegister, ChatDataRegister]] = {}
 
         self.unhandled_reports: dict[int, list[Message]] = {}
 
     async def start(self):
-        self.configs = await self.db.get_app_configs("reports", Config)
+        self.config = await self.db.get_app_configs("reports", Config)
 
-        for group_id, config in self.configs.items():
+        for group_id, config in self.config.groups.items():
             if not config.enabled:
                 break
             self.add_group_registers(group_id)
@@ -80,17 +84,17 @@ class Report:
         del self.registers[group_id]
 
     def botadmin_get_enabled(self, group_id: int) -> bool:
-        if config := self.configs.get(group_id):
+        if config := self.config.groups.get(group_id):
             return config.enabled
         return False
 
     async def botadmin_set_enabled(self, group_id: int, value: bool) -> None:
-        if config := self.configs.get(group_id):
+        if config := self.config.groups.get(group_id):
             config.enabled = value
         else:
-            self.configs[group_id] = Config(enabled=value)
+            self.config.groups[group_id] = ConfigGroup(enabled=value)
 
-        await self.db.set_app_config("reports", group_id, self.configs[group_id])
+        await self.db.set_app_config("reports", self.config)
 
         if value:
             self.add_group_registers(group_id)

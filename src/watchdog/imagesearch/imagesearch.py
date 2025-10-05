@@ -28,11 +28,16 @@ log = logging.getLogger("imagesearch")
 
 
 @dataclass
-class Config:
+class ConfigGroup:
     enabled: bool = False
     forbidden_tags: list[str] = field(
         default_factory=lambda: DEFAULT_BANNED_TAGS.copy()
     )
+
+
+@dataclass
+class Config:
+    groups: dict[int, ConfigGroup] = field(default_factory=dict)
 
 
 class ImageSearch:
@@ -41,7 +46,6 @@ class ImageSearch:
         self.bot = app.bot
         self.db = app.db
 
-        self.configs: dict[int, Config] = {}
         self.registers: dict[int, tuple[ChatDataRegister, ChatDataRegister]] = {}
         self.dm_register: None | CommandRegister = None
 
@@ -62,12 +66,12 @@ class ImageSearch:
         if not await self.perform_selftest():
             return
 
-        self.configs = await self.db.get_app_configs("imagesearch", Config)
+        self.config = await self.db.get_app_configs("imagesearch", Config)
 
         self.matching = Matching(self.app)
         self.matching.start()
 
-        for group_id, config in self.configs.items():
+        for group_id, config in self.config.groups.items():
             if not config.enabled:
                 break
             self.add_group_register(group_id)
@@ -427,7 +431,7 @@ class ImageSearch:
             )
 
     async def has_banned_e621_tags(self, group_id: int, id: int) -> list[str]:
-        if config := self.configs.get(group_id):
+        if config := self.config.groups.get(group_id):
             forbidden_tags = set(config.forbidden_tags)
             if not forbidden_tags:
                 return []
@@ -464,17 +468,17 @@ class ImageSearch:
             return f"{site} #{id}"
 
     def botadmin_get_enabled(self, group_id: int) -> bool:
-        if config := self.configs.get(group_id):
+        if config := self.config.groups.get(group_id):
             return config.enabled
         return False
 
     async def botadmin_set_enabled(self, group_id: int, value: bool) -> None:
-        if config := self.configs.get(group_id):
+        if config := self.config.groups.get(group_id):
             config.enabled = value
         else:
-            self.configs[group_id] = Config(enabled=value)
+            self.config.groups[group_id] = ConfigGroup(enabled=value)
 
-        await self.db.set_app_config("imagesearch", group_id, self.configs[group_id])
+        await self.db.set_app_config("imagesearch", self.config)
 
         if value:
             self.add_group_register(group_id)
@@ -482,18 +486,18 @@ class ImageSearch:
             self.remove_group_register(group_id)
 
     def botadmin_get_forbidden_tags(self, group_id: int) -> str:
-        if config := self.configs.get(group_id):
+        if config := self.config.groups.get(group_id):
             return " ".join(config.forbidden_tags)
         return ""
 
     async def botadmin_set_forbidden_tags(self, group_id: int, value: str) -> None:
         tags = value.split()
-        if config := self.configs.get(group_id):
+        if config := self.config.groups.get(group_id):
             config.forbidden_tags = tags
         else:
-            self.configs[group_id] = Config(forbidden_tags=tags)
+            self.config.groups[group_id] = ConfigGroup(forbidden_tags=tags)
 
-        await self.db.set_app_config("imagesearch", group_id, self.configs[group_id])
+        await self.db.set_app_config("imagesearch", self.config)
 
     async def cmd_identifyimage(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE, args: str

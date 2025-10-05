@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -20,9 +20,14 @@ log = logging.getLogger("welcome")
 
 
 @dataclass
-class Config:
-    enabled: bool
+class ConfigGroup:
+    enabled: bool = False
     message: str = DEFAULT_MESSAGE
+
+
+@dataclass
+class Config:
+    groups: dict[int, ConfigGroup] = field(default_factory=dict)
 
 
 class Welcome:
@@ -31,13 +36,12 @@ class Welcome:
         self.bot = app.bot
         self.db = app.db
 
-        self.configs: dict[int, Config] = {}
         self.registers: dict[int, ChatDataRegister] = {}
 
     async def start(self):
-        self.configs = await self.db.get_app_configs("welcome", Config)
+        self.config = await self.db.get_app_configs("welcome", Config)
 
-        for group_id, config in self.configs.items():
+        for group_id, config in self.config.groups.items():
             if not config.enabled:
                 break
             self.add_group_registers(group_id)
@@ -102,7 +106,7 @@ class Welcome:
 
         # Is this in a group we are enabled for?
         group_id = update.effective_chat.id
-        config = self.configs.get(group_id)
+        config = self.config.groups.get(group_id)
         if not config or not config.enabled:
             return
 
@@ -120,17 +124,17 @@ class Welcome:
             await update.message.reply_html(message)
 
     def botadmin_get_enabled(self, group_id: int) -> bool:
-        if config := self.configs.get(group_id):
+        if config := self.config.groups.get(group_id):
             return config.enabled
         return False
 
     async def botadmin_set_enabled(self, group_id: int, value: bool) -> None:
-        if config := self.configs.get(group_id):
+        if config := self.config.groups.get(group_id):
             config.enabled = value
         else:
-            self.configs[group_id] = Config(enabled=value)
+            self.config.groups[group_id] = ConfigGroup(enabled=value)
 
-        await self.db.set_app_config("welcome", group_id, self.configs[group_id])
+        await self.db.set_app_config("welcome", self.config)
 
         if value:
             self.add_group_registers(group_id)
@@ -138,17 +142,17 @@ class Welcome:
             self.remove_group_registers(group_id)
 
     def botadmin_get_message(self, group_id: int) -> str:
-        if config := self.configs.get(group_id):
+        if config := self.config.groups.get(group_id):
             return config.message
         return "Welcome to the group, {name}!"
 
     async def botadmin_set_message(self, group_id: int, value: str) -> None:
-        if config := self.configs.get(group_id):
+        if config := self.config.groups.get(group_id):
             config.message = value
         else:
-            self.configs[group_id] = Config(enabled=False, message=value)
+            self.config.groups[group_id] = ConfigGroup(enabled=False, message=value)
 
-        await self.db.set_app_config("welcome", group_id, self.configs[group_id])
+        await self.db.set_app_config("welcome", self.config)
 
     def is_available_for_admin(self, user_id: int, group_id: int) -> bool:
         """Confirm that this group is available for this admin user to manage"""
@@ -162,7 +166,10 @@ class Welcome:
             return False
 
         # Is this group enabled for welcome messages
-        if group_id not in self.configs or not self.configs[group_id].enabled:
+        if (
+            group_id not in self.config.groups
+            or not self.config.groups[group_id].enabled
+        ):
             return False
 
         return True
@@ -189,7 +196,7 @@ class Welcome:
             "<i>{user_id}</i> - The user's Telegram user ID\n\n"
             "This is the current welcome message:\n"
             "-----\n\n"
-            f"{self.configs[group_id].message}"
+            f"{self.config.groups[group_id].message}"
         )
 
         buttons: list[list[tuple[str, BUTTON_HANDLER]]] = [
@@ -217,7 +224,7 @@ class Welcome:
         # that have welcome enabled
         groups: list[Group] = []
         for group in self.db.get_groups_from_admin(update.effective_user.id):
-            if group.id in self.configs and self.configs[group.id].enabled:
+            if group.id in self.config.groups and self.config.groups[group.id].enabled:
                 groups.append(group)
 
         if not groups:
@@ -325,7 +332,7 @@ class Welcome:
             return
 
         # Update the message in the database
-        config = self.configs.get(group_id)
+        config = self.config.groups.get(group_id)
         if config is None or not config.enabled:
             await message.reply_text(
                 "⚠️ This group has disabled welcome messages, so you cannot set a welcome message"
@@ -334,6 +341,6 @@ class Welcome:
 
         config.message = text
 
-        await self.db.set_app_config("welcome", group_id, self.configs[group_id])
+        await self.db.set_app_config("welcome", self.config)
 
         await message.reply_text("✅ The welcome message has been updated!")
