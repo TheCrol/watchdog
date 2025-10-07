@@ -17,6 +17,7 @@ from .help import Help
 from .imagesearch import ImageSearch
 from .logger import setup_logger
 from .report import Report
+from .settings import Settings
 from .start import Start
 from .welcome import Welcome
 
@@ -58,6 +59,7 @@ class App:
 
         log.info("Starting programs...")
         self.botadmin = BotAdmin(self)
+        self.settings = Settings(self)
 
         report = Report(self)
         welcome = Welcome(self)
@@ -65,6 +67,7 @@ class App:
         start = Start(self)
         help = Help(self)
 
+        await self.settings.start()
         await report.start()
         await welcome.start()
         await imagesearch.start()

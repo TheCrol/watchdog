@@ -5,9 +5,10 @@ from telegram import Message, Update
 from telegram.ext import ContextTypes
 
 from ..bot import ChatDataRegister, CommandRegister
-from ..botadmin import AppConfig, AppEnabledConfig
+from ..settings import AppConfig
 from ..useful import ACCESS, mention_html, pluralize
-from .config import Config, GroupConfig
+from .config import GroupEnableConfig, PersonalEnableConfig
+from .db import DB, GroupDB, UserDB
 
 if TYPE_CHECKING:
     from ..watchdog import App
@@ -26,27 +27,38 @@ class Report:
         self.unhandled_reports: dict[int, list[Message]] = {}
 
     async def start(self):
-        self.config = await self.db.get_app_config("reports", Config)
+        self.config = await self.db.get_app_config("reports", DB)
 
         for group_id, config in self.config.groups.items():
             if not config.enabled:
                 break
             self.add_group_registers(group_id)
 
-        self.app.botadmin.register_config(
+        self.app.settings.register_config(
             AppConfig(
                 button_emoji="🚨",
                 name="Reports",
                 description="Allows people to @admin mention or call /admin to get attention of group admins",
                 display_order=10,
                 configs=[
-                    AppEnabledConfig(
-                        get_callback=self.botadmin_get_enabled,
-                        set_callback=self.botadmin_set_enabled,
-                    )
+                    GroupEnableConfig(self),
+                    PersonalEnableConfig(self),
                 ],
             )
         )
+
+    async def save_db(self):
+        await self.db.set_app_config("reports", self.config)
+
+    def get_group_config(self, group_id: int) -> GroupDB:
+        if group_id not in self.config.groups:
+            self.config.groups[group_id] = GroupDB()
+        return self.config.groups[group_id]
+
+    def get_user_config(self, user_id: int) -> UserDB:
+        if user_id not in self.config.users:
+            self.config.users[user_id] = UserDB()
+        return self.config.users[user_id]
 
     def add_group_registers(self, group_id: int):
         if group_id in self.registers:
@@ -72,24 +84,6 @@ class Report:
         command.deregister_command()
         chat_data.deregister_chat_data()
         del self.registers[group_id]
-
-    def botadmin_get_enabled(self, group_id: int) -> bool:
-        if config := self.config.groups.get(group_id):
-            return config.enabled
-        return False
-
-    async def botadmin_set_enabled(self, group_id: int, value: bool) -> None:
-        if config := self.config.groups.get(group_id):
-            config.enabled = value
-        else:
-            self.config.groups[group_id] = GroupConfig(enabled=value)
-
-        await self.db.set_app_config("reports", self.config)
-
-        if value:
-            self.add_group_registers(group_id)
-        else:
-            self.remove_group_registers(group_id)
 
     async def report(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE, args: None | str

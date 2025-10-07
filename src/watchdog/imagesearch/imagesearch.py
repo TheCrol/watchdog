@@ -9,15 +9,16 @@ from telegram import Update, User
 from telegram.ext import ContextTypes
 
 from ..bot import ChatDataRegister, CommandRegister
-from ..botadmin import AppConfig, AppEnabledConfig, TextConfig
+from ..settings.app_config import AppConfig
 from ..useful import ACCESS, mention_html, pluralize
-from .config import Config, GroupConfig
+from .config import DMEnabledConfig, ForbiddenTagsConfig, GroupEnableConfig
 from .constants import (
     MAX_SIMULTANEOUS_E621_CHECKS,
     MAX_SIMULTANEOUS_IMAGE_CHECKS,
     SELFTEST_HASH,
     ImageCheck,
 )
+from .db import DB, GroupDB
 from .matching import Matching
 
 if TYPE_CHECKING:
@@ -32,8 +33,8 @@ class ImageSearch:
         self.bot = app.bot
         self.db = app.db
 
-        self.registers: dict[int, tuple[ChatDataRegister, ChatDataRegister]] = {}
-        self.dm_register: None | CommandRegister = None
+        self.registers: dict[int, ChatDataRegister] = {}
+        self.dm_register: None | tuple[CommandRegister, ChatDataRegister] = None
 
         self.test_image_path = Path(__file__).parent / "selftest.jpg"
 
@@ -52,7 +53,7 @@ class ImageSearch:
         if not await self.perform_selftest():
             return
 
-        self.config = await self.db.get_app_config("imagesearch", Config)
+        self.config = await self.db.get_app_config("imagesearch", DB)
 
         self.matching = Matching(self.app)
         self.matching.start()
@@ -60,28 +61,29 @@ class ImageSearch:
         for group_id, config in self.config.groups.items():
             if not config.enabled:
                 break
-            self.add_group_register(group_id)
+            self.add_group_registers(group_id)
 
-        self.app.botadmin.register_config(
+        self.app.settings.register_config(
             AppConfig(
                 button_emoji="🖼️",
-                name="Image sourching",
+                name="Image sourcing",
                 description="Automatically tries to find the source of furry art being sent. Can optionally remove images with certain tags from e621",
                 display_order=70,
                 configs=[
-                    AppEnabledConfig(
-                        get_callback=self.botadmin_get_enabled,
-                        set_callback=self.botadmin_set_enabled,
-                    ),
-                    TextConfig(
-                        title="Forbidden tags",
-                        description="List of e621 tags that are forbidden. If an image is found with any of these tags, it will be removed. Separate multiple tags with spaces",
-                        get_callback=self.botadmin_get_forbidden_tags,
-                        set_callback=self.botadmin_set_forbidden_tags,
-                    ),
+                    GroupEnableConfig(self),
+                    ForbiddenTagsConfig(self),
+                    DMEnabledConfig(self),
                 ],
             )
         )
+
+    def get_group_config(self, group_id: int) -> GroupDB:
+        if group_id not in self.config.groups:
+            self.config.groups[group_id] = GroupDB()
+        return self.config.groups[group_id]
+
+    async def save_db(self):
+        await self.db.set_app_config("imagesearch", self.config)
 
     async def perform_selftest(self) -> bool:
         """Perform a self-test to ensure the image search binary is working correctly"""
@@ -135,31 +137,34 @@ class ImageSearch:
             await self.app.botadmin.notify(f"Error executing image search binary: {e}")
             return None
 
-    def add_group_register(self, group_id: int):
+    def add_group_registers(self, group_id: int):
         if group_id in self.registers:
             return
 
         chat_data_group = self.bot.register_chat_data(self.bot_chat_data, group_id)
-        chat_data_dm = self.bot.register_chat_data(self.bot_chat_data, None)
 
-        self.registers[group_id] = (chat_data_group, chat_data_dm)
+        self.registers[group_id] = chat_data_group
 
         # Enable the DM register if not already enabled
         if self.dm_register is None:
-            self.dm_register = self.bot.register_command(
+            chat_data_dm = self.bot.register_chat_data(self.bot_chat_data, None)
+            command_dm = self.bot.register_command(
                 "identifyimage",
                 "Find the source for furry art",
                 self.cmd_identifyimage,
                 ACCESS.EVERYONE_DM,
             )
+            self.dm_register = (command_dm, chat_data_dm)
 
-    def remove_group_register(self, group_id: int):
-        for register in self.registers.pop(group_id, []):
+    def remove_group_registers(self, group_id: int):
+        register = self.registers.pop(group_id, None)
+        if register is not None:
             register.deregister_chat_data()
 
         # Remove the DM register if no more groups are registered
         if not self.registers and self.dm_register is not None:
-            self.dm_register.deregister_command()
+            self.dm_register[0].deregister_command()
+            self.dm_register[1].deregister_chat_data()
             self.dm_register = None
 
     async def bot_chat_data(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -453,38 +458,6 @@ class ImageSearch:
         else:
             return f"{site} #{id}"
 
-    def botadmin_get_enabled(self, group_id: int) -> bool:
-        if config := self.config.groups.get(group_id):
-            return config.enabled
-        return False
-
-    async def botadmin_set_enabled(self, group_id: int, value: bool) -> None:
-        if config := self.config.groups.get(group_id):
-            config.enabled = value
-        else:
-            self.config.groups[group_id] = GroupConfig(enabled=value)
-
-        await self.db.set_app_config("imagesearch", self.config)
-
-        if value:
-            self.add_group_register(group_id)
-        else:
-            self.remove_group_register(group_id)
-
-    def botadmin_get_forbidden_tags(self, group_id: int) -> str:
-        if config := self.config.groups.get(group_id):
-            return " ".join(config.forbidden_tags)
-        return ""
-
-    async def botadmin_set_forbidden_tags(self, group_id: int, value: str) -> None:
-        tags = value.split()
-        if config := self.config.groups.get(group_id):
-            config.forbidden_tags = tags
-        else:
-            self.config.groups[group_id] = GroupConfig(forbidden_tags=tags)
-
-        await self.db.set_app_config("imagesearch", self.config)
-
     async def cmd_identifyimage(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE, args: str
     ):
@@ -495,6 +468,6 @@ class ImageSearch:
             (
                 "🖼️ You can upload an image to me in this chat, or forward a "
                 "message with an image in it, and I will try to find the source "
-                "for it if it's in Furaffinity or e621!"
+                "for it if it's in Furaffinity, e621 or Weasyl!"
             )
         )

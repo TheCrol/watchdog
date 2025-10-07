@@ -94,6 +94,7 @@ class Bot:
         self.commands: dict[str, list[Command]] = {}
         self.chat_data: dict[int | None, list[ChatData]] = {}
         self.button_callbacks: dict[int, Buttons] = {}
+        self.awaiting_reply: dict[int, REPLY_HANDLER] = {}
 
         self.command_updater = CommandUpdater(self.app, self)
 
@@ -643,6 +644,7 @@ class Bot:
         message: Message | MaybeInaccessibleMessage,
         text: str,
         buttons: list[list[tuple[str, BUTTON_HANDLER]]],
+        new_message: bool = False,
     ):
         """
         Send a message with inline keyboard buttons, while assinging the buttons
@@ -668,7 +670,8 @@ class Bot:
             keyboard_markup.append(keyboard_row)
 
         if (
-            isinstance(message, Message)
+            not new_message
+            and isinstance(message, Message)
             and message.from_user is not None
             and message.from_user.id == self.bot.id
         ):  # We can edit this message
@@ -699,7 +702,6 @@ class Bot:
     async def send_message_get_reply(
         self,
         message: Message | MaybeInaccessibleMessage,
-        context: CallbackContext,
         text: str,
         callback: REPLY_HANDLER,
     ):
@@ -708,20 +710,16 @@ class Bot:
             chat_id=message.chat.id,
             parse_mode="HTML",
         )
-        assert isinstance(context.user_data, dict)
-        context.user_data["awaiting_reply"] = callback
+
+        self.awaiting_reply[message.chat.id] = callback
 
     async def bot_reply(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message is None or update.message.text is None:
             return
 
-        assert isinstance(context.user_data, dict)
-
-        if "awaiting_reply" not in context.user_data:
+        handler = self.awaiting_reply.pop(update.message.chat.id, None)
+        if handler is None:
             return
-
-        handler: REPLY_HANDLER = context.user_data["awaiting_reply"]
-        del context.user_data["awaiting_reply"]
 
         await handler(update, context, update.message.text_html)
 
