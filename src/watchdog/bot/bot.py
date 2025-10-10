@@ -204,6 +204,9 @@ class Bot:
                 # Send a ping to each admin to ensure we can chat with them
                 # And add any new admins we see
                 for admin in result:
+                    # Ignore self
+                    if admin.user.id == self.app.bot.bot.id:
+                        continue
                     if not self.db.is_admin_of_group(admin.user.id, group.id):
                         log.info(
                             f"New admin {admin.user.full_name} in group {group.title}"
