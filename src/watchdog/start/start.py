@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from ..useful import ACCESS
+from ..useful import AccessRequired
 
 if TYPE_CHECKING:
     from ..watchdog import App
@@ -19,7 +19,7 @@ class Start:
             "start",
             "Start the conversation with me",
             self.cmd_start,
-            ACCESS.EVERYONE_DM,
+            AccessRequired(),
         )
 
     async def cmd_start(

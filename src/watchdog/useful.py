@@ -1,19 +1,69 @@
-from enum import IntEnum
-
 from telegram import Chat, User
 
 
-class ACCESS(IntEnum):
-    # All admin specific access levels within the group are also implied to be
-    # usable inside private messages with the bot.
-    # While the EVERYONE and EVERYONE_DM levels are separate.
-    EVERYONE = 0  # All users in groups. Takes optional group_id
-    EVERYONE_DM = 1  # Everyone in private messages
-    GROUP_ADMINS = 2  # Admins of that specific group. Requires group_id
-    ALL_ADMINS = 3  # Admins of all groups the bot is in. Takes optional group_id
-    ALL_ADMINS_DM = 4  # Admins of all groups in private messages
-    BOT_ADMIN = 5  # Bot admins in groups. Takes optional group_id
-    BOT_ADMIN_DM = 6  # Bot admins in private messages
+class AccessRequired:
+    def __init__(
+        self,
+        bot_admin: bool = False,
+        all_admins: bool = False,
+        admin_of_group: bool = False,
+        group_id: int | None = None,
+    ):
+        self.bot_admin = bot_admin
+        self.admin_of_group = admin_of_group
+        self.all_admins = all_admins
+        self.group_id = group_id
+
+        if admin_of_group and group_id is None:
+            raise ValueError("group_id must be set if admin_of_group is True")
+
+    def __repr__(self):
+        access: str
+        if self.bot_admin:
+            access = "bot admins"
+            if self.group_id is not None:
+                access += f" in {self.group_id}"
+        elif self.all_admins:
+            access = "all admins"
+            if self.group_id is not None:
+                access += f" in {self.group_id}"
+        elif self.admin_of_group and self.group_id is not None:
+            access = f"admins of {self.group_id}"
+        elif self.group_id is not None:
+            access = f"everyone in {self.group_id}"
+        else:
+            access = "everyone in DMs"
+
+        return f"<AccessRequired: {access}>"
+
+    @property
+    def priority(self) -> int:
+        if self.bot_admin:
+            return 3
+        elif self.admin_of_group:
+            return 2
+        elif self.all_admins:
+            return 1
+        else:
+            return 0
+
+    @property
+    def is_admin_access(self) -> bool:
+        return self.bot_admin or self.all_admins or self.admin_of_group
+
+    def has_access(
+        self, is_bot_admin: bool, admin_of_groups: list[int], group_id: int | None
+    ) -> bool:
+        if self.group_id != group_id:
+            return False
+
+        if is_bot_admin:
+            return True
+        if self.all_admins:
+            return bool(admin_of_groups)
+        if self.admin_of_group and self.group_id is not None:
+            return self.group_id in admin_of_groups
+        return True
 
 
 def pluralize(count: int, singular: str, plural: str) -> str:

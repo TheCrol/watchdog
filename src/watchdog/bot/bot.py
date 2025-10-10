@@ -31,7 +31,7 @@ from telegram.ext import (
     filters,
 )
 
-from ..useful import ACCESS, get_chat_name, mention_html
+from ..useful import AccessRequired, get_chat_name, mention_html
 from .command_updater import CommandUpdater
 
 if TYPE_CHECKING:
@@ -50,8 +50,7 @@ BUTTON_HANDLERS_REMOVED_AFTER = 60 * 60 * 3  # 3 hours
 class Command:
     description: str
     handler: COMMAND_HANDLER
-    access: ACCESS
-    group_id: int | None = None
+    access: AccessRequired
 
 
 @dataclass
@@ -413,10 +412,9 @@ class Bot:
         command: str,
         description: str,
         handler: COMMAND_HANDLER,
-        access: ACCESS,
-        group_id: int | None = None,
+        access: AccessRequired,
     ) -> CommandRegister:
-        command_class = Command(description, handler, access, group_id)
+        command_class = Command(description, handler, access)
 
         commands = self.commands.setdefault(command, [])
         commands.append(command_class)
@@ -506,17 +504,13 @@ class Bot:
             group_id = None
 
         is_bot_admin = user_id in self.app.bot_admins
-        is_admin = self.db.is_admin(user_id)
-        is_group_admin = group_id is not None and self.db.is_admin_of_group(
-            user_id, group_id
-        )
+        admin_of = [g.id for g in self.db.get_groups_from_admin(user_id)]
 
         handler = self.get_first_handler(
             handlers=[command],
             group_id=group_id,
             is_bot_admin=is_bot_admin,
-            is_admin=is_admin,
-            is_group_admin=is_group_admin,
+            admin_of=admin_of,
         )
         return handler is not None
 
@@ -554,10 +548,9 @@ class Bot:
             handlers=handlers,
             group_id=group_id,
             is_bot_admin=update.effective_user.id in self.app.bot_admins,
-            is_admin=self.db.is_admin(update.effective_user.id),
-            is_group_admin=self.db.is_admin_of_group(
-                update.effective_user.id, update.effective_chat.id
-            ),
+            admin_of=[
+                g.id for g in self.db.get_groups_from_admin(update.effective_user.id)
+            ],
         )
 
         if handler is None:
@@ -600,42 +593,18 @@ class Bot:
         handlers: list[Command],
         group_id: int | None,
         is_bot_admin: bool,
-        is_admin: bool,
-        is_group_admin: bool,
+        admin_of: list[int],
     ) -> COMMAND_HANDLER | None:
         # Check from the highest level to lowest level
 
-        access_levels: list[ACCESS] = []
-
-        # Create a list of access levels to check in order
-        if group_id is None and is_bot_admin:
-            access_levels.append(ACCESS.BOT_ADMIN_DM)
-            access_levels.append(ACCESS.BOT_ADMIN)
-
-        elif group_id and is_bot_admin:
-            access_levels.append(ACCESS.BOT_ADMIN)
-
-        if group_id is None and (is_admin or is_bot_admin):
-            access_levels.append(ACCESS.ALL_ADMINS_DM)
-            access_levels.append(ACCESS.ALL_ADMINS)
-
-        elif group_id and (is_admin or is_bot_admin):
-            access_levels.append(ACCESS.ALL_ADMINS)
-
-        if group_id is not None and (is_group_admin or is_bot_admin):
-            access_levels.append(ACCESS.GROUP_ADMINS)
-
-        if group_id is None:
-            access_levels.append(ACCESS.EVERYONE_DM)
-
-        access_levels.append(ACCESS.EVERYONE)
+        sorted_handlers = sorted(
+            handlers, key=lambda h: h.access.priority, reverse=True
+        )
 
         # Pick the first one that matches
-        for access in access_levels:
-            for handler in handlers:
-                if handler.access == access:
-                    if handler.group_id is None or handler.group_id == group_id:
-                        return handler.handler
+        for handler in sorted_handlers:
+            if handler.access.has_access(is_bot_admin, admin_of, group_id):
+                return handler.handler
 
         return None
 

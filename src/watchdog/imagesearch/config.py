@@ -7,11 +7,12 @@ from ..settings import (
     BackToMenuAnswer,
     ButtonsAnswer,
     ExecAnswer,
+    GroupSelect,
     InputAnswer,
     SingleConfig,
     UserInfo,
 )
-from ..useful import ACCESS
+from ..useful import AccessRequired
 
 if TYPE_CHECKING:
     from .imagesearch import ImageSearch
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 
 class GroupEnableConfig(SingleConfig):
     static_name = "Status"
-    access = ACCESS.ALL_ADMINS
+    access = AccessRequired(all_admins=True)
 
     def __init__(self, imagesearch: "ImageSearch"):
         self.imagesearch = imagesearch
@@ -76,8 +77,8 @@ class GroupEnableConfig(SingleConfig):
 
 class ForbiddenTagsConfig(SingleConfig):
     static_name = "Forbidden tags"
-    access = ACCESS.GROUP_ADMINS
-    requires_group = True
+    access = AccessRequired(all_admins=True)
+    group_select = GroupSelect.ADMINED_GROUPS
 
     def __init__(self, imagesearch: "ImageSearch"):
         self.imagesearch = imagesearch
@@ -140,7 +141,7 @@ class ForbiddenTagsConfig(SingleConfig):
 
 class DMEnabledConfig(SingleConfig):
     static_name = "DM enabled"
-    access = ACCESS.ALL_ADMINS
+    access = AccessRequired(all_admins=True)
 
     def __init__(self, imagesearch: "ImageSearch"):
         self.imagesearch = imagesearch

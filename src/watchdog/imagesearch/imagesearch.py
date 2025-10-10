@@ -10,7 +10,7 @@ from telegram.ext import ContextTypes
 
 from ..bot import ChatDataRegister, CommandRegister
 from ..settings.app_config import AppConfig
-from ..useful import ACCESS, mention_html, pluralize
+from ..useful import AccessRequired, mention_html, pluralize
 from .config import DMEnabledConfig, ForbiddenTagsConfig, GroupEnableConfig
 from .constants import (
     MAX_SIMULTANEOUS_E621_CHECKS,
@@ -152,7 +152,7 @@ class ImageSearch:
                 "identifyimage",
                 "Find the source for furry art",
                 self.cmd_identifyimage,
-                ACCESS.EVERYONE_DM,
+                AccessRequired(),
             )
             self.dm_register = (command_dm, chat_data_dm)
 

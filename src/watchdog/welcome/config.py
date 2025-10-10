@@ -6,11 +6,12 @@ from ..settings import (
     BackToMenuAnswer,
     ButtonsAnswer,
     ExecAnswer,
+    GroupSelect,
     InputAnswer,
     SingleConfig,
     UserInfo,
 )
-from ..useful import ACCESS
+from ..useful import AccessRequired
 
 if TYPE_CHECKING:
     from .welcome import Welcome
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 
 class GroupEnableConfig(SingleConfig):
     static_name = "Status"
-    access = ACCESS.ALL_ADMINS
+    access = AccessRequired(all_admins=True)
 
     def __init__(self, welcome: "Welcome"):
         self.welcome = welcome
@@ -75,8 +76,8 @@ class GroupEnableConfig(SingleConfig):
 
 class MessageConfig(SingleConfig):
     static_name = "Message"
-    access = ACCESS.GROUP_ADMINS
-    requires_group = True
+    access = AccessRequired(all_admins=True)
+    group_select = GroupSelect.ADMINED_GROUPS
 
     def __init__(self, welcome: "Welcome"):
         self.welcome = welcome

@@ -9,7 +9,7 @@ from ..settings import (
     SingleConfig,
     UserInfo,
 )
-from ..useful import ACCESS
+from ..useful import AccessRequired
 
 if TYPE_CHECKING:
     from .report import Report
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 class GroupEnableConfig(SingleConfig):
     static_name = "Status"
-    access = ACCESS.ALL_ADMINS
+    access = AccessRequired(all_admins=True)
 
     def __init__(self, report: "Report"):
         self.report = report
@@ -74,7 +74,7 @@ class GroupEnableConfig(SingleConfig):
 
 class PersonalEnableConfig(SingleConfig):
     static_name = "Receive reports"
-    access = ACCESS.ALL_ADMINS
+    access = AccessRequired(all_admins=True)
 
     def __init__(self, report: "Report"):
         self.report = report

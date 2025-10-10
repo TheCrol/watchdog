@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes
 
 from ..bot import ChatDataRegister, CommandRegister
 from ..settings import AppConfig
-from ..useful import ACCESS, mention_html, pluralize
+from ..useful import AccessRequired, mention_html, pluralize
 from .config import GroupEnableConfig, PersonalEnableConfig
 from .db import DB, GroupDB, UserDB
 
@@ -68,8 +68,7 @@ class Report:
             "admin",
             "[reason] - Notify the admins",
             self.cmd_admin,
-            ACCESS.EVERYONE,
-            group_id,
+            AccessRequired(group_id=group_id),
         )
         chat_data_register = self.bot.register_chat_data(self.bot_chat_data, group_id)
 

@@ -7,10 +7,20 @@ from telegram import MaybeInaccessibleMessage, Message, Update
 from telegram.ext import CallbackContext, ContextTypes
 
 from ..bot.bot import BUTTON_HANDLER
-from ..useful import ACCESS
-from .app_config import (Answer, AppConfig, BackToMenuAnswer, ButtonsAnswer,
-                         ExecAnswer, GroupInfo, InputAnswer, OutputAnswer,
-                         SingleConfig, UserInfo)
+from ..useful import AccessRequired
+from .app_config import (
+    Answer,
+    AppConfig,
+    BackToMenuAnswer,
+    ButtonsAnswer,
+    ExecAnswer,
+    GroupInfo,
+    GroupSelect,
+    InputAnswer,
+    OutputAnswer,
+    SingleConfig,
+    UserInfo,
+)
 
 if TYPE_CHECKING:
     from ..watchdog import App
@@ -28,7 +38,10 @@ class Settings:
 
     async def start(self):
         self.bot.register_command(
-            "settings", "Manage the settings", self.cmd_settings, ACCESS.ALL_ADMINS_DM
+            "settings",
+            "Manage the settings",
+            self.cmd_settings,
+            AccessRequired(all_admins=True),
         )
 
     def register_config(self, app_config: AppConfig):
@@ -43,54 +56,46 @@ class Settings:
         group: GroupInfo | None,
     ) -> bool:
         """Check if a user has access to an app's settings"""
-        if user_id in self.app.bot_admins:
-            return True  # Bot admins have access to everything
-
-        # Decide the access level
-        access_level = ACCESS.EVERYONE
-        if group is not None and self.db.is_admin_of_group(user_id, group.id):
-            access_level = ACCESS.GROUP_ADMINS
-        elif self.db.is_admin(user_id):
-            access_level = ACCESS.ALL_ADMINS
+        is_bot_admin = user_id in self.app.bot_admins
+        admin_of_groups = [g.id for g in self.db.get_groups_from_admin(user_id)]
 
         if setting is not None:
-            return self.compare_access_level(access_level, setting.access)
+            if not setting.access.has_access(is_bot_admin, admin_of_groups, None):
+                return False
+
+            # Check if the setting requires a group
+            if setting.group_select != GroupSelect.NO_GROUP_SELECT:
+                if group is None:
+                    return True
+                return self.has_group_access(user_id, setting, group)
+            return True  # User has access to this specific setting
 
         else:
             # No specific setting, check if the app has any settings the user can access
             for config in app_config.configs:
-                if self.compare_access_level(access_level, config.access):
+                if config.access.has_access(is_bot_admin, admin_of_groups, None):
                     return True  # User has access to at least one setting
             return False  # User doesn't have access to any settings in this app
 
-    def compare_access_level(self, subject: ACCESS, required: ACCESS) -> bool:
-        """
-        Check if a subject access level meets or exceeds the required access
-        level. For ease of use an _DM suffixes are treated the same as their
-        non-DM counterparts.
-        """
-        if subject == ACCESS.EVERYONE_DM:
-            subject = ACCESS.EVERYONE
-        elif subject == ACCESS.ALL_ADMINS_DM:
-            subject = ACCESS.ALL_ADMINS
-        elif subject == ACCESS.BOT_ADMIN_DM:
-            subject = ACCESS.BOT_ADMIN
+    def has_group_access(
+        self,
+        user_id: int,
+        setting: SingleConfig,
+        group: GroupInfo,
+    ) -> bool:
+        """Check if a user has access to a specific group's settings"""
+        if setting.group_select == GroupSelect.ALL_GROUPS:
+            # List all groups we know of
+            groups = list(self.db.groups.values())
+        elif setting.group_select == GroupSelect.ADMINED_GROUPS:
+            # Only admins have access, so we only ask for groups where the user is an admin
+            groups = self.db.get_groups_from_admin(user_id)
+        else:
+            return False
 
-        if required == ACCESS.EVERYONE_DM:
-            required = ACCESS.EVERYONE
-        elif required == ACCESS.ALL_ADMINS_DM:
-            required = ACCESS.ALL_ADMINS
-        elif required == ACCESS.BOT_ADMIN_DM:
-            required = ACCESS.BOT_ADMIN
-
-        if subject == ACCESS.BOT_ADMIN:
-            return True  # Bot admins have access to everything
-        elif subject == ACCESS.ALL_ADMINS:
-            return required in (ACCESS.EVERYONE, ACCESS.ALL_ADMINS)
-        elif subject == ACCESS.GROUP_ADMINS:
-            return required in (ACCESS.EVERYONE, ACCESS.ALL_ADMINS, ACCESS.GROUP_ADMINS)
-        elif subject == ACCESS.EVERYONE:
-            return required == ACCESS.EVERYONE
+        for search_group in groups:
+            if search_group.id == group.id:
+                return True
         return False
 
     def get_message_header(
@@ -292,31 +297,33 @@ class Settings:
         await update.callback_query.answer()
 
         if not self.has_access(user.id, app_config, setting, None):
-            await update.callback_query.answer(
-                "You don't have permission to access this setting.",
-                show_alert=True,
+            await self.bot.bot.send_message(
+                chat_id=user.id,
+                text="You don't have permission to access this setting.",
             )
             return
 
         user_info = UserInfo(user.id, user.full_name)
 
-        if not setting.requires_group:
+        if not setting.group_select != GroupSelect.NO_GROUP_SELECT:
             answer = await setting.on_button(user_info)
             await self.show_answer(message, app_config, setting, answer, user_info)
 
         else:
             # We maybe need to show a group selector first
-            if setting.access in (ACCESS.EVERYONE, ACCESS.EVERYONE_DM):
-                # Everyone has access, so we ask for any of our groups
+            if setting.group_select == GroupSelect.ALL_GROUPS:
+                # List all groups we know of
                 groups = list(self.db.groups.values())
-            else:
+            elif setting.group_select == GroupSelect.ADMINED_GROUPS:
                 # Only admins have access, so we only ask for groups where the user is an admin
                 groups = self.db.get_groups_from_admin(user.id)
+            else:
+                return
 
             if not groups:
-                await update.callback_query.answer(
-                    "You are not an admin in any group.",
-                    show_alert=True,
+                await self.bot.bot.send_message(
+                    chat_id=user.id,
+                    text="You don't have access to any group.",
                 )
                 return
             elif len(groups) == 1:
@@ -366,9 +373,9 @@ class Settings:
         await update.callback_query.answer()
 
         if not self.has_access(user.id, app_config, setting, group):
-            await update.callback_query.answer(
-                "You don't have permission to access this setting.",
-                show_alert=True,
+            await self.bot.bot.send_message(
+                chat_id=user.id,
+                text="You don't have permission to access this setting.",
             )
             return
 
@@ -396,9 +403,9 @@ class Settings:
         await update.callback_query.answer()
 
         if not self.has_access(user.id, app_config, setting, user_info.group):
-            await update.callback_query.answer(
-                "You don't have permission to access this setting.",
-                show_alert=True,
+            await self.bot.bot.send_message(
+                chat_id=user.id,
+                text="You don't have permission to access this setting.",
             )
             return
 

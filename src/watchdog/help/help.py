@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from ..useful import ACCESS
+from ..useful import AccessRequired
 
 if TYPE_CHECKING:
     from ..watchdog import App
@@ -19,7 +19,7 @@ class Help:
             "help",
             "Show the list of available commands",
             self.cmd_help,
-            ACCESS.EVERYONE_DM,
+            AccessRequired(),
         )
 
     async def cmd_help(
@@ -38,10 +38,10 @@ class Help:
             for item in items:
                 if self.bot.has_access_to_command(item, user.id, None):
                     text = f"/{command} - {item.description}"
-                    if item.access in (ACCESS.EVERYONE_DM, ACCESS.EVERYONE):
-                        commands.append(text)
-                    else:
+                    if item.access.is_admin_access:
                         admin_commands.append(text)
+                    else:
+                        commands.append(text)
 
         if not commands and not admin_commands:
             await message.reply_text("You have no access to any commands")

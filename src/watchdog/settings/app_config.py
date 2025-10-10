@@ -1,7 +1,14 @@
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import Awaitable, Callable
 
-from ..useful import ACCESS
+from ..useful import AccessRequired
+
+
+class GroupSelect(IntEnum):
+    NO_GROUP_SELECT = 0
+    ALL_GROUPS = 1
+    ADMINED_GROUPS = 2
 
 
 @dataclass
@@ -61,8 +68,8 @@ class ExecAnswer(Answer):
 
 class SingleConfig:
     static_name: str
-    access: ACCESS
-    requires_group: bool = False
+    access: AccessRequired
+    group_select: GroupSelect = GroupSelect.NO_GROUP_SELECT
 
     async def get_button(self, user: UserInfo) -> str: ...
 
