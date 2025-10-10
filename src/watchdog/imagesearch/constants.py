@@ -5,7 +5,7 @@ CHECK_DB_EVERY = 60 * 60  # Check the database every hour
 GET_DB_DUMP_URL = "https://api-next.fuzzysearch.net/v1/dump/latest"
 DEFAULT_BANNED_TAGS = ["cub", "young"]
 MAX_SIMULTANEOUS_IMAGE_CHECKS = 7  # How many images can be checked at the same time
-MAX_SIMULTANEOUS_E621_CHECKS = 4  # How many e621 posts can be fetched at the same time
+MAX_SIMULTANEOUS_E621_CHECKS = 2  # How many e621 posts can be fetched at the same time
 
 
 @dataclass
