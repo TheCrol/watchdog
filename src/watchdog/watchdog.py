@@ -58,15 +58,16 @@ class App:
         await self.bot.start()
 
         log.info("Starting programs...")
-        self.botadmin = BotAdmin(self)
         self.settings = Settings(self)
 
+        self.botadmin = BotAdmin(self)
         report = Report(self)
         welcome = Welcome(self)
         imagesearch = ImageSearch(self)
         start = Start(self)
         help = Help(self)
 
+        await self.botadmin.start()
         await self.settings.start()
         await report.start()
         await welcome.start()
