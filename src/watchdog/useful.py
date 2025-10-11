@@ -57,6 +57,8 @@ class AccessRequired:
         if self.group_id != group_id:
             return False
 
+        if self.bot_admin:
+            return is_bot_admin
         if is_bot_admin:
             return True
         if self.all_admins:

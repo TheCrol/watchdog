@@ -116,7 +116,13 @@ class Settings:
     async def show_settings(self, message: Message | MaybeInaccessibleMessage):
         buttons: list[list[tuple[str, BUTTON_HANDLER]]] = []
 
-        for configs in itertools.batched(self.configs, 2):
+        app_configs = [
+            config
+            for config in self.configs
+            if self.has_access(message.chat.id, config, None, None)
+        ]
+
+        for configs in itertools.batched(app_configs, 2):
             row: list[tuple[str, BUTTON_HANDLER]] = []
             for config in configs:
                 row.append(

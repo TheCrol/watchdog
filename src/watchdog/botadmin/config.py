@@ -18,12 +18,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-"""
-Options:
-- Force check admins
-- Leave group
-"""
-
 
 class CheckAdminsConfig(SingleConfig):
     static_name = "Check admins"
