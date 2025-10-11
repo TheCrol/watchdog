@@ -9,6 +9,8 @@ from pydantic import BaseModel
 from telegram import Chat
 from telegram import User as TGUser
 
+from .useful import GROUP_ANONYMOUS_BOT_ID
+
 if TYPE_CHECKING:
     from .watchdog import App
 
@@ -315,12 +317,18 @@ class DB:
                 return
 
     def is_admin(self, user_id: int) -> bool:
+        if user_id == GROUP_ANONYMOUS_BOT_ID:
+            return True
+
         for in_group in self.in_group:
             if in_group.id == user_id and in_group.is_admin:
                 return True
         return False
 
     def is_admin_of_group(self, user_id: int, group_id: int) -> bool:
+        if user_id == GROUP_ANONYMOUS_BOT_ID:
+            return True
+
         for in_group in self.in_group:
             if in_group.id == user_id and in_group.group_id == group_id:
                 return in_group.is_admin

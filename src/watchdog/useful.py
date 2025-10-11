@@ -1,5 +1,7 @@
 from telegram import Chat, User
 
+GROUP_ANONYMOUS_BOT_ID = 1087968824
+
 
 class AccessRequired:
     def __init__(
