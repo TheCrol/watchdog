@@ -92,7 +92,9 @@ class App:
         # Parse command line arguments
         # Returns (log_level, use_colour)
 
-        parser = argparse.ArgumentParser(description="The Watchdog telegram bot")
+        parser = argparse.ArgumentParser(
+            description="The Watchdog telegram bot", color=True, suggest_on_error=True
+        )
         parser.add_argument(
             "-l",
             "--log-level",
