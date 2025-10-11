@@ -146,6 +146,10 @@ class Report:
         count: int = 0
 
         for admin in group_admins:
+            config = self.get_user_config(admin.id)
+            if not config.enabled:
+                continue
+
             # First send the message
             try:
                 message = await context.bot.send_message(
@@ -181,9 +185,18 @@ class Report:
                     f"Failed to send admin report to {admin.name}: {e}"
                 )
 
-        await update.message.reply_html(
-            f"<i>Reported to {pluralize(count, 'admin', 'admins')}</i>"
-        )
+        if count == 0:
+            await update.message.reply_html(
+                "❗Sorry, I've been unable to contact any admins! Please try contacting one directly."
+            )
+            await self.app.botadmin.notify(
+                f"User {mention_html(update.effective_user)} tried to report in {update.effective_chat.title} but no admins could be contacted."
+            )
+
+        else:
+            await update.message.reply_html(
+                f"<i>Reported to {pluralize(count, 'admin', 'admins')}</i>"
+            )
 
     async def bot_chat_data(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Detect if @admin or @admins is mentioned
