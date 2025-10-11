@@ -3,7 +3,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ..settings import AppConfig
-from .config import CheckAdminsConfig, LeaveGroupConfig
+from .config import LeaveGroupConfig
 
 if TYPE_CHECKING:
     from ..watchdog import App
@@ -25,7 +25,6 @@ class BotAdmin:
                 description="Administrative actions for bot admins",
                 display_order=90,
                 configs=[
-                    CheckAdminsConfig(self),
                     LeaveGroupConfig(self),
                 ],
             )

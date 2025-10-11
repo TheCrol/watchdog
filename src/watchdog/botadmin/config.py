@@ -19,25 +19,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class CheckAdminsConfig(SingleConfig):
-    static_name = "Check admins"
-    access = AccessRequired(bot_admin=True)
-    group_select = GroupSelect.ALL_GROUPS
-
-    def __init__(self, botadmin: "BotAdmin"):
-        self.botadmin = botadmin
-
-    async def get_button(self, user: UserInfo) -> str:
-        return self.static_name
-
-    async def on_button(self, user: UserInfo) -> Answer:
-        # TODO: Check admins
-
-        return OutputAnswer(
-            "✅ Checked admins in all groups.", next_answer=BackToMenuAnswer()
-        )
-
-
 class LeaveGroupConfig(SingleConfig):
     static_name = "Leave group"
     access = AccessRequired(bot_admin=True)
