@@ -271,7 +271,7 @@ class DB:
         )
 
         # Add to the group
-        in_group = InGroup(id=user_id, group_id=group_id, is_admin=False)
+        in_group = InGroup(id=user_id, group_id=group_id, is_admin=is_admin)
         self.in_group.append(in_group)
 
     async def record_activity(self, user_id: int, group_id: int) -> None:
