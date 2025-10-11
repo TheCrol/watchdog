@@ -157,4 +157,9 @@ class DMEnabledConfig(SingleConfig):
         self.imagesearch.config.dm_enabled = not self.imagesearch.config.dm_enabled
         await self.imagesearch.save_db()
 
+        if self.imagesearch.config.dm_enabled:
+            self.imagesearch.add_dm_registers()
+        else:
+            self.imagesearch.remove_dm_registers()
+
         return BackToMenuAnswer()

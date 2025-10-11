@@ -63,6 +63,9 @@ class ImageSearch:
                 break
             self.add_group_registers(group_id)
 
+        if self.config.dm_enabled:
+            self.add_dm_registers()
+
         self.app.settings.register_config(
             AppConfig(
                 button_emoji="🖼️",
@@ -145,27 +148,26 @@ class ImageSearch:
 
         self.registers[group_id] = chat_data_group
 
-        # Enable the DM register if not already enabled
-        if self.dm_register is None:
-            chat_data_dm = self.bot.register_chat_data(self.bot_chat_data, None)
-            command_dm = self.bot.register_command(
-                "identifyimage",
-                "Find the source for furry art",
-                self.cmd_identifyimage,
-                AccessRequired(),
-            )
-            self.dm_register = (command_dm, chat_data_dm)
+    def add_dm_registers(self):
+        chat_data_dm = self.bot.register_chat_data(self.bot_chat_data, None)
+        command_dm = self.bot.register_command(
+            "identifyimage",
+            "Find the source for furry art",
+            self.cmd_identifyimage,
+            AccessRequired(),
+        )
+        self.dm_register = (command_dm, chat_data_dm)
 
     def remove_group_registers(self, group_id: int):
         register = self.registers.pop(group_id, None)
         if register is not None:
             register.deregister_chat_data()
 
-        # Remove the DM register if no more groups are registered
-        if not self.registers and self.dm_register is not None:
-            self.dm_register[0].deregister_command()
-            self.dm_register[1].deregister_chat_data()
-            self.dm_register = None
+    def remove_dm_registers(self):
+        assert self.dm_register is not None
+        self.dm_register[0].deregister_command()
+        self.dm_register[1].deregister_chat_data()
+        self.dm_register = None
 
     async def bot_chat_data(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if (
