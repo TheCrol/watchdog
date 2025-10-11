@@ -204,8 +204,8 @@ class Bot:
                 # Send a ping to each admin to ensure we can chat with them
                 # And add any new admins we see
                 for admin in result:
-                    # Ignore self
-                    if admin.user.id == self.app.bot.bot.id:
+                    # Ignore all bots
+                    if admin.user.is_bot:
                         continue
                     if not self.db.is_admin_of_group(admin.user.id, group.id):
                         log.info(
@@ -331,6 +331,10 @@ class Bot:
 
         # Is this chat in our group?
         if update.chat_member.chat.id not in self.db.groups:
+            return
+
+        # Ignore bots
+        if update.chat_member.new_chat_member.user.is_bot:
             return
 
         await self.db.update_chat(update.chat_member.from_user)
