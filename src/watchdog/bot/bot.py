@@ -195,10 +195,11 @@ class Bot:
         """Periodically fetch a list of admins for each group to ensure we have the latest info"""
 
         while True:
-            blocked_chats: list[User] = []
+            notified_users: set[User] = set()
 
             for group in self.db.groups.values():
                 result = await self.app.bot.bot.get_chat_administrators(group.id)
+                blocked_chats: set[User] = set()
 
                 # Scan through the list of current admins
                 # Send a ping to each admin to ensure we can chat with them
@@ -214,25 +215,32 @@ class Bot:
                         await self.db.update_admin(admin.user.id, group.id, True)
 
                     # Ping the user to ensure we can chat with them
-                    try:
-                        await self.bot.send_chat_action(admin.user.id, "typing")
-                    except error.Forbidden:
-                        blocked_chats.append(admin.user)
-                    except Exception as e:
-                        log.error(f"Error pinging admin {admin.user.full_name}: {e}")
+                    if admin.user not in notified_users:
+                        try:
+                            await self.bot.send_chat_action(admin.user.id, "typing")
+                        except error.Forbidden:
+                            blocked_chats.add(admin.user)
+                            notified_users.add(admin.user)
+                        except Exception as e:
+                            log.error(
+                                f"Error pinging admin {admin.user.full_name}: {e}"
+                            )
 
-            if blocked_chats:
-                names = ", ".join([get_chat_name(user) for user in blocked_chats])
-                html_names = ", ".join(
-                    [mention_html(user, False) for user in blocked_chats]
-                )
+                # Notify any blocked admins
+                if blocked_chats:
+                    names = ", ".join([get_chat_name(user) for user in blocked_chats])
+                    html_names = ", ".join(
+                        [mention_html(user, False) for user in blocked_chats]
+                    )
 
-                log.warning(f"Cannot send messages to admins: {names}")
-                await self.app.bot.bot.send_message(
-                    chat_id=group.id,
-                    text=f"❗{html_names}: Could you please open the chat with me so that I have the ability to send you admin-related messages?",
-                    parse_mode="HTML",
-                )
+                    log.warning(
+                        f"In '{group.title}' I couldn't send messages to admins: {names}"
+                    )
+                    await self.app.bot.bot.send_message(
+                        chat_id=group.id,
+                        text=f"❗{html_names}: Could you please open the chat with me so that I have the ability to send you admin-related messages?",
+                        parse_mode="HTML",
+                    )
 
                 # Find any removed admins
                 for admin in self.db.get_group_admins(group.id):
