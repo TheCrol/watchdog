@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Crol"}
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "aiohttp>=3.12.15",
     "aiorun>=2025.1.1",
@@ -16,7 +16,6 @@ dependencies = [
     "pydantic>=2.11.10",
     "python-telegram-bot>=22.5",
     "toml>=0.10.2",
-    "uvloop>=0.21.0",
 ]
 
 [project.scripts]

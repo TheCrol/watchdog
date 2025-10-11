@@ -30,7 +30,7 @@ class App:
 
         aiorun.run(
             self.run(),
-            use_uvloop=True,
+            # use_uvloop=True,
             shutdown_callback=self.on_shutdown,
             timeout_task_shutdown=5,
         )
